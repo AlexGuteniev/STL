@@ -39,6 +39,9 @@ __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_2(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
 __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_4(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+// This one is not vectorized; supplied for uniform control flow
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_8(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
 
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
@@ -59,6 +62,8 @@ size_t _Find_first_of_pos_bitmap_vectorized(const _Ty1* const _Haystack, const s
         return ::__std_find_first_of_trivial_bitmap_pos_2(_Haystack, _Haystack_length, _Needle, _Needle_length);
     } else if constexpr (sizeof(_Ty1) == 4) {
         return ::__std_find_first_of_trivial_bitmap_pos_4(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else if constexpr (sizeof(_Ty1) == 8) {
+        return ::__std_find_first_of_trivial_bitmap_pos_8(_Haystack, _Haystack_length, _Needle, _Needle_length);
     } else {
         _STL_INTERNAL_STATIC_ASSERT(false); // unexpected size
     }
@@ -793,20 +798,20 @@ constexpr size_t _Traits_find_first_of(_In_reads_(_Hay_size) const _Traits_ptr_t
                 const size_t _Haystack_part_size = _Hay_size - _Start_at;
 
                 if (_Haystack_part_size > _Threshold_find_first_of) {
-                    if constexpr (sizeof(_Elem) <= 4) {
-                        constexpr size_t _Find_first_of_bitmap_threshold = sizeof(_Elem) == 1 ? 48 : 16;
-                        if (_Needle_size > _Find_first_of_bitmap_threshold) {
-                            size_t _Pos = _Find_first_of_pos_bitmap_vectorized(
-                                _Hay_start, _Haystack_part_size, _Needle, _Needle_size);
+                    constexpr size_t _Find_first_of_bitmap_threshold = sizeof(_Elem) == 1 ? 48
+                                                                     : sizeof(_Elem) == 8 ? 8
+                                                                                          : 16;
+                    if (_Needle_size > _Find_first_of_bitmap_threshold) {
+                        size_t _Pos = _Find_first_of_pos_bitmap_vectorized(
+                            _Hay_start, _Haystack_part_size, _Needle, _Needle_size);
 
-                            const bool _Pos_valid = sizeof(_Elem) >= 1 ? _Pos != static_cast<size_t>(-2) : true;
-                            if (_Pos_valid) {
-                                if (_Pos != static_cast<size_t>(-1)) {
-                                    _Pos += _Start_at;
-                                }
-
-                                return _Pos;
+                        const bool _Pos_valid = sizeof(_Elem) >= 1 ? _Pos != static_cast<size_t>(-2) : true;
+                        if (_Pos_valid) {
+                            if (_Pos != static_cast<size_t>(-1)) {
+                                _Pos += _Start_at;
                             }
+
+                            return _Pos;
                         }
                     }
 

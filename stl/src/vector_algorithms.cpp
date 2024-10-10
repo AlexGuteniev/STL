@@ -3358,74 +3358,76 @@ namespace {
             const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
             const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
 
-            if (_Use_avx2()) {
-                __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+            if constexpr (sizeof(_Ty) < 8) {
+                if (_Use_avx2()) {
+                    __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
 
-                if constexpr (sizeof(_Ty) > 1) {
-                    if (_mm256_testz_si256(_Bitmap, _Bitmap)) {
-                        return static_cast<size_t>(-2);
-                    }
-                }
-
-
-                const size_t _Haystack_length_vec = _Haystack_length & ~size_t{7};
-                for (size_t _Ix = 0; _Ix != _Haystack_length_vec; _Ix += 8) {
-                    const __m256i _Data   = _Load(_Haystack_ptr + _Ix);
-                    const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
-                    const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
-                    if (_Bingo != 0) {
-                        return _Ix + _tzcnt_u32(_Bingo);
-                    }
-                }
-
-                const size_t _Haystack_length_tail = _Haystack_length & 7;
-                if (_Haystack_length_tail != 0) {
-                    _Ty _Buf[8];
-                    _CSTD memcpy(_Buf, _Haystack_ptr + _Haystack_length_vec, _Haystack_length_tail * sizeof(_Ty));
-                    const __m256i _Data   = _Load(_Haystack_ptr);
-                    const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
-                    const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
-                    if (_Bingo != 0) {
-                        const unsigned _Pos = _tzcnt_u32(_Bingo);
-                        if (_Pos < _Haystack_length_tail) {
-                            return _Haystack_length_vec + _Pos;
-                        }
-                    }
-                }
-
-                return static_cast<size_t>(-1);
-            } else {
-                bool _Table[256] = {};
-
-                for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
-                    const _Ty _Val = _Needle_ptr[_Ix];
-
-                    if constexpr (sizeof(_Val) > 1) {
-                        if (_Val >= 256) {
+                    if constexpr (sizeof(_Ty) > 1) {
+                        if (_mm256_testz_si256(_Bitmap, _Bitmap)) {
                             return static_cast<size_t>(-2);
                         }
                     }
 
-                    _Table[_Val] = true;
-                }
 
-                for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
-
-                    const _Ty _Val = _Haystack_ptr[_Ix];
-
-                    if constexpr (sizeof(_Val) > 1) {
-                        if (_Val >= 256) {
-                            continue;
+                    const size_t _Haystack_length_vec = _Haystack_length & ~size_t{7};
+                    for (size_t _Ix = 0; _Ix != _Haystack_length_vec; _Ix += 8) {
+                        const __m256i _Data   = _Load(_Haystack_ptr + _Ix);
+                        const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                        const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                        if (_Bingo != 0) {
+                            return _Ix + _tzcnt_u32(_Bingo);
                         }
                     }
 
-                    if (_Table[_Val]) {
-                        return _Ix;
+                    const size_t _Haystack_length_tail = _Haystack_length & 7;
+                    if (_Haystack_length_tail != 0) {
+                        _Ty _Buf[8];
+                        _CSTD memcpy(_Buf, _Haystack_ptr + _Haystack_length_vec, _Haystack_length_tail * sizeof(_Ty));
+                        const __m256i _Data   = _Load(_Haystack_ptr);
+                        const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                        const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                        if (_Bingo != 0) {
+                            const unsigned _Pos = _tzcnt_u32(_Bingo);
+                            if (_Pos < _Haystack_length_tail) {
+                                return _Haystack_length_vec + _Pos;
+                            }
+                        }
+                    }
+
+                    return static_cast<size_t>(-1);
+                }
+            }
+
+            bool _Table[256] = {};
+
+            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
+                const _Ty _Val = _Needle_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        return static_cast<size_t>(-2);
                     }
                 }
 
-                return static_cast<size_t>(-1);
+                _Table[_Val] = true;
             }
+
+            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
+
+                const _Ty _Val = _Haystack_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Ix;
+                }
+            }
+
+            return static_cast<size_t>(-1);
         }
     } // namespace __std_find_meow_of_bitmap
 
@@ -3769,6 +3771,11 @@ __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_2(co
 __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_4(const void* const _Haystack,
     const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
     return __std_find_meow_of_bitmap::_Impl_first<uint32_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
+}
+
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_8(const void* const _Haystack,
+    const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
+    return __std_find_meow_of_bitmap::_Impl_first<uint64_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
 }
 
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(const void* const _Haystack,
