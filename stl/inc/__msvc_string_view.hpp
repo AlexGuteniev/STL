@@ -43,6 +43,12 @@ __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_4(
 __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_8(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
 
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_bitmap_pos_1(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_bitmap_pos_2(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+
+
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(
@@ -64,6 +70,19 @@ size_t _Find_first_of_pos_bitmap_vectorized(const _Ty1* const _Haystack, const s
         return ::__std_find_first_of_trivial_bitmap_pos_4(_Haystack, _Haystack_length, _Needle, _Needle_length);
     } else if constexpr (sizeof(_Ty1) == 8) {
         return ::__std_find_first_of_trivial_bitmap_pos_8(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else {
+        _STL_INTERNAL_STATIC_ASSERT(false); // unexpected size
+    }
+}
+
+template <class _Ty1, class _Ty2>
+size_t _Find_last_of_pos_bitmap_vectorized(const _Ty1* const _Haystack, const size_t _Haystack_length,
+    const _Ty2* const _Needle, const size_t _Needle_length) noexcept {
+    _STL_INTERNAL_STATIC_ASSERT(sizeof(_Ty1) == sizeof(_Ty2));
+    if constexpr (sizeof(_Ty1) == 1) {
+        return ::__std_find_last_of_trivial_bitmap_pos_1(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else if constexpr (sizeof(_Ty1) == 2) {
+        return ::__std_find_last_of_trivial_bitmap_pos_2(_Haystack, _Haystack_length, _Needle, _Needle_length);
     } else {
         _STL_INTERNAL_STATIC_ASSERT(false); // unexpected size
     }
@@ -805,7 +824,7 @@ constexpr size_t _Traits_find_first_of(_In_reads_(_Hay_size) const _Traits_ptr_t
                         size_t _Pos = _Find_first_of_pos_bitmap_vectorized(
                             _Hay_start, _Haystack_part_size, _Needle, _Needle_size);
 
-                        const bool _Pos_valid = sizeof(_Elem) >= 1 ? _Pos != static_cast<size_t>(-2) : true;
+                        const bool _Pos_valid = sizeof(_Elem) > 1 ? _Pos != static_cast<size_t>(-2) : true;
                         if (_Pos_valid) {
                             if (_Pos != static_cast<size_t>(-1)) {
                                 _Pos += _Start_at;
@@ -860,47 +879,43 @@ constexpr size_t _Traits_find_last_of(_In_reads_(_Hay_size) const _Traits_ptr_t<
         const auto _Hay_start = (_STD min)(_Start_at, _Hay_size - 1);
 
         if constexpr (_Is_implementation_handled_char_traits<_Traits>) {
-            if (!_STD _Is_constant_evaluated()) {
-                using _Elem = typename _Traits::char_type;
+            using _Elem = typename _Traits::char_type;
 
-                bool _Use_bitmap = true;
 #if _USE_STD_VECTOR_ALGORITHMS
-                bool _Try_vectorize = false;
-
-                if constexpr (sizeof(_Elem) <= 2) {
-                    _Try_vectorize = _Hay_start + 1 > _Threshold_find_first_of;
+            if constexpr (sizeof(_Elem) <= 2) {
+                if (!_STD _Is_constant_evaluated() && _Hay_start + 1 > _Threshold_find_first_of) {
                     // Additional condition for when the vectorization outperforms the table lookup
                     constexpr size_t _Find_last_of_bitmap_threshold = sizeof(_Elem) == 1 ? 48 : 8;
 
-                    _Use_bitmap = !_Try_vectorize || _Needle_size > _Find_last_of_bitmap_threshold;
-                }
-#endif // _USE_STD_VECTOR_ALGORITHMS
+                    if (_Needle_size > _Find_last_of_bitmap_threshold) {
+                        const size_t _Pos =
+                            _Find_last_of_pos_bitmap_vectorized(_Haystack, _Hay_start + 1, _Needle, _Needle_size);
 
-                if (_Use_bitmap) {
-                    _String_bitmap<_Elem> _Matches;
-                    if (_Matches._Mark(_Needle, _Needle + _Needle_size)) {
-                        for (auto _Match_try = _Haystack + _Hay_start;; --_Match_try) {
-                            if (_Matches._Match(*_Match_try)) {
-                                return static_cast<size_t>(_Match_try - _Haystack); // found a match
-                            }
-
-                            if (_Match_try == _Haystack) {
-                                return static_cast<size_t>(-1); // at beginning, no more chance for match
-                            }
+                        const bool _Pos_valid = sizeof(_Elem) > 1 ? _Pos != static_cast<size_t>(-2) : true;
+                        if (_Pos_valid) {
+                            return _Pos;
                         }
                     }
 
-                    // couldn't put one of the characters into the bitmap, fall back to vectorized or serial algorithms
+                    return _STD _Find_last_of_pos_vectorized(_Haystack, _Hay_start + 1, _Needle, _Needle_size);
                 }
+            }
+#endif // _USE_STD_VECTOR_ALGORITHMS
 
-#if _USE_STD_VECTOR_ALGORITHMS
-                if constexpr (sizeof(_Elem) <= 2) {
-                    if (_Try_vectorize) {
-                        return _STD _Find_last_of_pos_vectorized(_Haystack, _Hay_start + 1, _Needle, _Needle_size);
+            _String_bitmap<_Elem> _Matches;
+            if (_Matches._Mark(_Needle, _Needle + _Needle_size)) {
+                for (auto _Match_try = _Haystack + _Hay_start;; --_Match_try) {
+                    if (_Matches._Match(*_Match_try)) {
+                        return static_cast<size_t>(_Match_try - _Haystack); // found a match
+                    }
+
+                    if (_Match_try == _Haystack) {
+                        return static_cast<size_t>(-1); // at beginning, no more chance for match
                     }
                 }
-#endif // _USE_STD_VECTOR_ALGORITHMS
             }
+
+            // couldn't put one of the characters into the bitmap, fall back to serial algorithm
         }
 
         for (auto _Match_try = _Haystack + _Hay_start;; --_Match_try) {

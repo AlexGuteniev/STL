@@ -3429,6 +3429,84 @@ namespace {
 
             return static_cast<size_t>(-1);
         }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_last(const void* const _Haystack, size_t _Haystack_length, const void* const _Needle,
+            const size_t _Needle_length) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+
+            if constexpr (sizeof(_Ty) < 8) {
+                if (_Use_avx2()) {
+                    __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+
+                    if constexpr (sizeof(_Ty) > 1) {
+                        if (_mm256_testz_si256(_Bitmap, _Bitmap)) {
+                            return static_cast<size_t>(-2);
+                        }
+                    }
+
+                    while (_Haystack_length >= 8) {
+                        _Haystack_length -= 8;
+                        const __m256i _Data   = _Load(_Haystack_ptr + _Haystack_length);
+                        const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                        const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                        if (_Bingo != 0) {
+                            return _Haystack_length + 31 - _lzcnt_u32(_Bingo);
+                        }
+                    }
+
+                    const size_t _Haystack_length_tail = _Haystack_length & 7;
+                    if (_Haystack_length_tail != 0) {
+                        _Ty _Buf[8];
+                        _CSTD memcpy(_Buf, _Haystack_ptr, _Haystack_length_tail * sizeof(_Ty));
+                        const __m256i _Data   = _Load(_Haystack_ptr);
+                        const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                        const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                        if (_Bingo != 0) {
+                            const unsigned _Pos = 31 - _lzcnt_u32(_Bingo);
+                            if (_Pos < _Haystack_length_tail) {
+                                return _Pos;
+                            }
+                        }
+                    }
+
+                    return static_cast<size_t>(-1);
+                }
+            }
+
+            bool _Table[256] = {};
+
+            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
+                const _Ty _Val = _Needle_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        return static_cast<size_t>(-2);
+                    }
+                }
+
+                _Table[_Val] = true;
+            }
+
+            while (_Haystack_length != 0) {
+                --_Haystack_length;
+
+                const _Ty _Val = _Haystack_ptr[_Haystack_length];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Haystack_length;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
     } // namespace __std_find_meow_of_bitmap
 
     template <class _Traits, class _Ty>
@@ -3758,6 +3836,16 @@ const void* __stdcall __std_find_first_of_trivial_8(
     return __std_find_first_of::_Impl_4_8<__std_find_first_of::_Traits_8>(_First1, _Last1, _First2, _Last2);
 }
 
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(const void* const _Haystack,
+    const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
+    return __std_find_last_of_pos_impl<uint8_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
+}
+
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(const void* const _Haystack,
+    const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
+    return __std_find_last_of_pos_impl<uint16_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
+}
+
 __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_1(const void* const _Haystack,
     const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
     return __std_find_meow_of_bitmap::_Impl_first<uint8_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
@@ -3778,14 +3866,14 @@ __declspec(noalias) size_t __stdcall __std_find_first_of_trivial_bitmap_pos_8(co
     return __std_find_meow_of_bitmap::_Impl_first<uint64_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
 }
 
-__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(const void* const _Haystack,
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_bitmap_pos_1(const void* const _Haystack,
     const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
-    return __std_find_last_of_pos_impl<uint8_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    return __std_find_meow_of_bitmap::_Impl_last<uint8_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
 }
 
-__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(const void* const _Haystack,
+__declspec(noalias) size_t __stdcall __std_find_last_of_trivial_bitmap_pos_2(const void* const _Haystack,
     const size_t _Haystack_length, const void* const _Needle, const size_t _Needle_length) noexcept {
-    return __std_find_last_of_pos_impl<uint16_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    return __std_find_meow_of_bitmap::_Impl_last<uint16_t>(_Haystack, _Haystack_length, _Needle, _Needle_length);
 }
 
 const void* __stdcall __std_search_1(
