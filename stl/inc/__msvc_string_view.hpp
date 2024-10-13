@@ -29,6 +29,15 @@ extern "C" {
 // compiler has to assume that the denoted arrays are "globally address taken", and that any later calls to
 // unanalyzable routines may modify those arrays.
 
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_pos_1(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_pos_2(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_pos_4(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+__declspec(noalias) size_t __stdcall __std_find_first_of_trivial_pos_8(
+    const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
+
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_1(
     const void* _Haystack, size_t _Haystack_length, const void* _Needle, size_t _Needle_length) noexcept;
 __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(
@@ -37,6 +46,23 @@ __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(
 } // extern "C"
 
 _STD_BEGIN
+
+template <class _Ty1, class _Ty2>
+size_t _Find_first_of_pos_vectorized(const _Ty1* const _Haystack, const size_t _Haystack_length,
+    const _Ty2* const _Needle, const size_t _Needle_length) noexcept {
+    _STL_INTERNAL_STATIC_ASSERT(sizeof(_Ty1) == sizeof(_Ty2));
+    if constexpr (sizeof(_Ty1) == 1) {
+        return ::__std_find_first_of_trivial_pos_1(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else if constexpr (sizeof(_Ty1) == 2) {
+        return ::__std_find_first_of_trivial_pos_2(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else if constexpr (sizeof(_Ty1) == 4) {
+        return ::__std_find_first_of_trivial_pos_4(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else if constexpr (sizeof(_Ty1) == 8) {
+        return ::__std_find_first_of_trivial_pos_8(_Haystack, _Haystack_length, _Needle, _Needle_length);
+    } else {
+        _STL_INTERNAL_STATIC_ASSERT(false); // unexpected size
+    }
+}
 
 template <class _Ty1, class _Ty2>
 size_t _Find_last_of_pos_vectorized(const _Ty1* const _Haystack, const size_t _Haystack_length,
@@ -793,14 +819,13 @@ constexpr size_t _Traits_find_first_of(_In_reads_(_Hay_size) const _Traits_ptr_t
 
 #if _USE_STD_VECTOR_ALGORITHMS
                 if (_Try_vectorize) {
-                    const _Traits_ptr_t<_Traits> _Found =
-                        _STD _Find_first_of_vectorized(_Hay_start, _Hay_end, _Needle, _Needle + _Needle_size);
+                    size_t _Found = _STD _Find_first_of_pos_vectorized(_Hay_start, _Hay_size, _Needle, _Needle_size);
 
-                    if (_Found != _Hay_end) {
-                        return static_cast<size_t>(_Found - _Haystack); // found a match
-                    } else {
-                        return static_cast<size_t>(-1); // no match
+                    if (_Found != static_cast<size_t>(-1)) {
+                        _Found += _Start_at; // found a match
                     }
+
+                    return _Found;
                 }
 #endif // _USE_STD_VECTOR_ALGORITHMS
             }
