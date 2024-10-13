@@ -2916,6 +2916,245 @@ namespace {
         return _Result;
     }
 
+    namespace __std_find_meow_of_bitmap {
+        template <class _Ty>
+        bool __forceinline _Can_fit_256_bits_avx(const _Ty* _Needle_ptr, const size_t _Needle_length) noexcept {
+            if constexpr (sizeof(_Ty) == 1) {
+                return true;
+            } else {
+                __m256i _Mask = _mm256_undefined_si256();
+                if constexpr (sizeof(_Ty) == 2) {
+                    _Mask = _mm256_set1_epi16(static_cast<short>(0xFF00));
+                } else if constexpr (sizeof(_Ty) == 4) {
+                    _Mask = _mm256_set1_epi32(static_cast<int>(0xFFFF'FF00));
+                } else {
+                    static_assert(false, "Unexpected size");
+                }
+
+                const size_t _Byte_size = _Needle_length * sizeof(_Ty);
+
+                const void* _Stop = _Needle_ptr;
+                _Advance_bytes(_Stop, _Byte_size & ~size_t{0x1F});
+                while (_Needle_ptr != _Stop) {
+                    const __m256i _Data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(_Needle_ptr));
+                    if (!_mm256_testz_si256(_Mask, _Data)) {
+                        return false;
+                    }
+
+                    _Needle_ptr += 32 / sizeof(_Ty);
+                }
+
+                _Advance_bytes(_Stop, _Byte_size & 0x1C);
+                while (_Needle_ptr != _Stop) {
+                    if ((*_Needle_ptr & ~_Ty{0xFF}) != 0) {
+                        return false;
+                    }
+
+                    ++_Needle_ptr;
+                }
+
+                return true;
+            }
+        }
+
+        __m256i __vectorcall _Step(const __m256i _Bitmap, const __m256i _Data) noexcept {
+            __m256i _Data_high    = _mm256_srli_epi32(_Data, 5);
+            __m256i _Bitmap_parts = _mm256_permutevar8x32_epi32(_Bitmap, _Data_high);
+            __m256i _Data_low_inv = _mm256_andnot_si256(_Data, _mm256_set1_epi32(0x1F));
+            __m256i _Mask         = _mm256_sllv_epi32(_Bitmap_parts, _Data_low_inv);
+            return _Mask;
+        }
+
+        template <class _Ty>
+        __m256i _Load(const _Ty* const _Src) noexcept {
+            if constexpr (sizeof(_Ty) == 1) {
+                return _mm256_cvtepu8_epi32(_mm_loadu_si64(_Src));
+            } else if constexpr (sizeof(_Ty) == 2) {
+                return _mm256_cvtepu16_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(_Src)));
+            } else if constexpr (sizeof(_Ty) == 4) {
+                return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(_Src));
+            } else {
+                static_assert(false, "Unexpected size");
+            }
+        }
+
+        template <class _Ty>
+        __m256i _Mask_out_oveflow(const __m256i _Mask, const __m256i _Data) noexcept {
+            if constexpr (sizeof(_Ty) == 1) {
+                return _Mask;
+            } else {
+                const __m256i _Data_high = _mm256_and_si256(_Data, _mm256_set1_epi32(static_cast<int>(0xFFFF'FF00)));
+                const __m256i _Fit_mask  = _mm256_cmpeq_epi32(_Data_high, _mm256_setzero_si256());
+                return _mm256_and_si256(_Mask, _Fit_mask);
+            }
+        }
+
+        template <class _Ty>
+        __m256i _Make_bitmap(const _Ty* const _Needle_ptr, const size_t _Needle_length) noexcept {
+            __m256i _Bitmap = _mm256_setzero_si256();
+
+            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
+                const _Ty _Val                = _Needle_ptr[_Ix];
+                const __m256i _Count_low      = _mm256_broadcastq_epi64(_mm_cvtsi32_si128(_Val & 0x3F));
+                const uint32_t _One_1_high    = 1u << uint32_t((_Val >> 3) & 0x18);
+                const __m256i _One_1_high_unp = _mm256_cvtepu8_epi64(_mm_cvtsi32_si128(_One_1_high));
+                const __m256i _One_1          = _mm256_sllv_epi64(_One_1_high_unp, _Count_low);
+                _Bitmap                       = _mm256_or_si256(_Bitmap, _One_1);
+            }
+
+            return _Bitmap;
+        }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_first_avx(const void* const _Haystack, const size_t _Haystack_length,
+            const void* const _Needle, const size_t _Needle_length) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+
+            const __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+
+            const size_t _Haystack_length_vec = _Haystack_length & ~size_t{7};
+            for (size_t _Ix = 0; _Ix != _Haystack_length_vec; _Ix += 8) {
+                const __m256i _Data   = _Load(_Haystack_ptr + _Ix);
+                const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                if (_Bingo != 0) {
+                    return _Ix + _tzcnt_u32(_Bingo);
+                }
+            }
+
+            const size_t _Haystack_length_tail = _Haystack_length & 7;
+            if (_Haystack_length_tail != 0) {
+                _Ty _Buf[8];
+                _CSTD memcpy(_Buf, _Haystack_ptr + _Haystack_length_vec, _Haystack_length_tail * sizeof(_Ty));
+                const __m256i _Data   = _Load(_Haystack_ptr);
+                const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                if (_Bingo != 0) {
+                    const unsigned _Pos = _tzcnt_u32(_Bingo);
+                    if (_Pos < _Haystack_length_tail) {
+                        return _Haystack_length_vec + _Pos;
+                    }
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_first_scalar(const void* const _Haystack, const size_t _Haystack_length,
+            const void* const _Needle, const size_t _Needle_length) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+
+            bool _Table[256] = {};
+
+            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
+                const _Ty _Val = _Needle_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        return static_cast<size_t>(-2);
+                    }
+                }
+
+                _Table[_Val] = true;
+            }
+
+            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
+
+                const _Ty _Val = _Haystack_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Ix;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_last_avx(const void* const _Haystack, size_t _Haystack_length, const void* const _Needle,
+            const size_t _Needle_length) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+
+            const __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+
+            while (_Haystack_length >= 8) {
+                _Haystack_length -= 8;
+                const __m256i _Data   = _Load(_Haystack_ptr + _Haystack_length);
+                const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                if (_Bingo != 0) {
+                    return _Haystack_length + 31 - _lzcnt_u32(_Bingo);
+                }
+            }
+
+            const size_t _Haystack_length_tail = _Haystack_length & 7;
+            if (_Haystack_length_tail != 0) {
+                _Ty _Buf[8];
+                _CSTD memcpy(_Buf, _Haystack_ptr, _Haystack_length_tail * sizeof(_Ty));
+                const __m256i _Data   = _Load(_Haystack_ptr);
+                const __m256i _Mask   = _Mask_out_oveflow<_Ty>(_Step(_Bitmap, _Data), _Data);
+                const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask));
+                if (_Bingo != 0) {
+                    const unsigned _Pos = 31 - _lzcnt_u32(_Bingo);
+                    if (_Pos < _Haystack_length_tail) {
+                        return _Pos;
+                    }
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_last_scalar(const void* const _Haystack, size_t _Haystack_length,
+            const void* const _Needle, const size_t _Needle_length) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+
+            bool _Table[256] = {};
+
+            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
+                const _Ty _Val = _Needle_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        return static_cast<size_t>(-2);
+                    }
+                }
+
+                _Table[_Val] = true;
+            }
+
+            while (_Haystack_length != 0) {
+                --_Haystack_length;
+
+                const _Ty _Val = _Haystack_ptr[_Haystack_length];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Haystack_length;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+    } // namespace __std_find_meow_of_bitmap
+
     namespace __std_find_first_of {
 
         template <class _Ty>
