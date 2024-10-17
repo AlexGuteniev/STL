@@ -3006,8 +3006,8 @@ namespace {
         }
 
         template <class _Ty>
-        size_t __stdcall _Impl_first_avx(const void* const _Haystack, const size_t _Haystack_length,
-            const void* const _Needle, const size_t _Needle_length) noexcept {
+        size_t _Impl_first_avx(const void* const _Haystack, const size_t _Haystack_length, const void* const _Needle,
+            const size_t _Needle_length) noexcept {
             const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
             const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
 
@@ -3033,44 +3033,6 @@ namespace {
                 const unsigned _Bingo = _mm256_movemask_ps(_mm256_castsi256_ps(_Mask)) & _Tail_bingo_mask;
                 if (_Bingo != 0) {
                     return _Haystack_length_vec + _tzcnt_u32(_Bingo);
-                }
-            }
-
-            return static_cast<size_t>(-1);
-        }
-
-        template <class _Ty>
-        size_t __stdcall _Impl_first_scalar(const void* const _Haystack, const size_t _Haystack_length,
-            const void* const _Needle, const size_t _Needle_length) noexcept {
-            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
-            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
-
-            bool _Table[256] = {};
-
-            for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
-                const _Ty _Val = _Needle_ptr[_Ix];
-
-                if constexpr (sizeof(_Val) > 1) {
-                    if (_Val >= 256) {
-                        return static_cast<size_t>(-2);
-                    }
-                }
-
-                _Table[_Val] = true;
-            }
-
-            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
-
-                const _Ty _Val = _Haystack_ptr[_Ix];
-
-                if constexpr (sizeof(_Val) > 1) {
-                    if (_Val >= 256) {
-                        continue;
-                    }
-                }
-
-                if (_Table[_Val]) {
-                    return _Ix;
                 }
             }
 
@@ -3111,25 +3073,53 @@ namespace {
             return static_cast<size_t>(-1);
         }
 
-        template <class _Ty>
-        size_t __stdcall _Impl_last_scalar(const void* const _Haystack, size_t _Haystack_length,
-            const void* const _Needle, const size_t _Needle_length) noexcept {
-            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
-            const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
+        using _Scalar_table_t = bool[256];
 
-            bool _Table[256] = {};
+        template <class _Ty>
+        bool _Build_scalar_table(bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
+            const auto _Needle_ptr = static_cast<const _Ty*>(_Needle);
 
             for (size_t _Ix = 0; _Ix != _Needle_length; ++_Ix) {
                 const _Ty _Val = _Needle_ptr[_Ix];
 
                 if constexpr (sizeof(_Val) > 1) {
                     if (_Val >= 256) {
-                        return static_cast<size_t>(-2);
+                        return false;
                     }
                 }
 
                 _Table[_Val] = true;
             }
+
+            return true;
+        }
+
+        template <class _Ty>
+        size_t __stdcall _Impl_first_scalar(
+            const void* const _Haystack, const size_t _Haystack_length, const bool* const _Table) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+
+            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
+                const _Ty _Val = _Haystack_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Ix;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
+        template <class _Ty>
+        size_t _Impl_last_scalar(
+            const void* const _Haystack, size_t _Haystack_length, const bool* const _Table) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
 
             while (_Haystack_length != 0) {
                 --_Haystack_length;
@@ -3528,17 +3518,15 @@ namespace {
                         return __std_find_meow_of_bitmap::_Impl_first_avx<_Ty>(_First1, _Count1, _First2, _Count2);
                     }
                 } else {
-                    const size_t _Pos =
-                        __std_find_meow_of_bitmap::_Impl_first_scalar<_Ty>(_First1, _Count1, _First2, _Count2);
-                    if (_Pos != static_cast<size_t>(-2)) {
-                        return _Pos;
+                    __std_find_meow_of_bitmap::_Scalar_table_t _Table = {};
+                    if (__std_find_meow_of_bitmap::_Build_scalar_table<_Ty>(_Table, _First2, _Count2)) {
+                        return __std_find_meow_of_bitmap::_Impl_first_scalar<_Ty>(_First1, _Count1, _Table);
                     }
                 }
             } else {
-                const size_t _Pos =
-                    __std_find_meow_of_bitmap::_Impl_first_scalar<_Ty>(_First1, _Count1, _First2, _Count2);
-                if (_Pos != static_cast<size_t>(-2)) {
-                    return _Pos;
+                __std_find_meow_of_bitmap::_Scalar_table_t _Table = {};
+                if (__std_find_meow_of_bitmap::_Build_scalar_table<_Ty>(_Table, _First2, _Count2)) {
+                    return __std_find_meow_of_bitmap::_Impl_first_scalar<_Ty>(_First1, _Count1, _Table);
                 }
             }
 
@@ -3576,10 +3564,9 @@ namespace {
                     _Haystack, _Haystack_length, _Needle, _Needle_length);
             }
         } else {
-            const size_t _Pos =
-                __std_find_meow_of_bitmap::_Impl_last_scalar<_Ty>(_Haystack, _Haystack_length, _Needle, _Needle_length);
-            if (_Pos != static_cast<size_t>(-2)) {
-                return _Pos;
+            __std_find_meow_of_bitmap::_Scalar_table_t _Table = {};
+            if (__std_find_meow_of_bitmap::_Build_scalar_table<_Ty>(_Table, _Needle, _Needle_length)) {
+                return __std_find_meow_of_bitmap::_Impl_last_scalar<_Ty>(_Haystack, _Haystack_length, _Table);
             }
         }
 
