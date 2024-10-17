@@ -2927,6 +2927,8 @@ namespace {
                     _Mask = _mm256_set1_epi16(static_cast<short>(0xFF00));
                 } else if constexpr (sizeof(_Ty) == 4) {
                     _Mask = _mm256_set1_epi32(static_cast<int>(0xFFFF'FF00));
+                } else if constexpr (sizeof(_Ty) == 8) {
+                    _Mask = _mm256_set1_epi64x(static_cast<long long>(0xFFFF'FFFF'FFFF'FF00));
                 } else {
                     static_assert(false, "Unexpected size");
                 }
@@ -2973,6 +2975,11 @@ namespace {
                 return _mm256_cvtepu16_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(_Src)));
             } else if constexpr (sizeof(_Ty) == 4) {
                 return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(_Src));
+            } else if constexpr (sizeof(_Ty) == 8) {
+                const __m256i _Low  = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(_Src));
+                const __m256i _High = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(_Src) + 1);
+                const __m256i _Pack = _mm256_packs_epi32(_Low, _High);
+                return _mm256_permutex_epi64(_Pack, _MM_SHUFFLE(3, 1, 2, 0));
             } else {
                 static_assert(false, "Unexpected size");
             }
@@ -3511,17 +3518,9 @@ namespace {
             const void* _Last1 = static_cast<const _Ty*>(_First1) + _Count1;
             const void* _Result;
 
-
-            if constexpr (sizeof(_Ty) <= 4) {
-                if (_Use_avx2()) {
-                    if (__std_find_meow_of_bitmap::_Can_fit_256_bits_avx(static_cast<const _Ty*>(_First2), _Count2)) {
-                        return __std_find_meow_of_bitmap::_Impl_first_avx<_Ty>(_First1, _Count1, _First2, _Count2);
-                    }
-                } else {
-                    __std_find_meow_of_bitmap::_Scalar_table_t _Table = {};
-                    if (__std_find_meow_of_bitmap::_Build_scalar_table<_Ty>(_Table, _First2, _Count2)) {
-                        return __std_find_meow_of_bitmap::_Impl_first_scalar<_Ty>(_First1, _Count1, _Table);
-                    }
+            if (_Use_avx2()) {
+                if (__std_find_meow_of_bitmap::_Can_fit_256_bits_avx(static_cast<const _Ty*>(_First2), _Count2)) {
+                    return __std_find_meow_of_bitmap::_Impl_first_avx<_Ty>(_First1, _Count1, _First2, _Count2);
                 }
             } else {
                 __std_find_meow_of_bitmap::_Scalar_table_t _Table = {};
