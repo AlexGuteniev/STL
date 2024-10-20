@@ -47,6 +47,16 @@ __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(
 
 _STD_BEGIN
 
+
+enum _Find_first_alg_t {
+    _Default,
+    _Vector_vector_table,
+    _Vector_scalar_table,
+    _Vector_no_table,
+};
+
+extern _Find_first_alg_t _Find_first_of_alg;
+
 template <class _Ty1, class _Ty2>
 size_t _Find_first_of_pos_vectorized(const _Ty1* const _Haystack, const size_t _Haystack_length,
     const _Ty2* const _Needle, const size_t _Needle_length) noexcept {

@@ -22,6 +22,17 @@ extern "C" long __isa_enabled;
 #pragma optimize("t", on) // Override /Os with /Ot for this TU
 #endif // !defined(_DEBUG)
 
+namespace std {
+    enum _Find_first_alg_t {
+        _Default,
+        _Vector_vector_table,
+        _Vector_scalar_table,
+        _Vector_no_table,
+    };
+
+    _Find_first_alg_t _Find_first_of_alg = _Default;
+} // namespace std
+
 namespace {
     bool _Use_avx2() noexcept {
         return __isa_enabled & (1 << __ISA_AVAILABLE_AVX2);
@@ -2932,6 +2943,16 @@ namespace {
 
         template <class _Ty>
         _Strategy _Pick_strategy_avx(const size_t _Count1, const size_t _Count2) noexcept {
+            if (std::_Find_first_of_alg != std::_Find_first_alg_t::_Default) {
+                if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_vector_table) {
+                    return _Strategy::_Vector_bitmap;
+                } else if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_scalar_table) {
+                    return _Strategy::_Scalar_bitmap;
+                } else if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_no_table) {
+                    return _Strategy::_No_bitmap;
+                }
+            }
+
             if constexpr (sizeof(_Ty) == 1) {
                 if (_Count2 <= 15 || _Product_fits_threshold((_Count1 + 15) / 16, (_Count2 + 15) / 16, 60)) {
                     return _Strategy::_No_bitmap;

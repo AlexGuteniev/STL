@@ -21,6 +21,9 @@ template <AlgType Alg, class T, T Start = T{'!'}>
 void bm(benchmark::State& state) {
     const size_t Pos   = static_cast<size_t>(state.range(0));
     const size_t NSize = static_cast<size_t>(state.range(1));
+
+    std::_Find_first_of_alg = static_cast<std::_Find_first_alg_t>(state.range(2));
+
     const size_t HSize = Pos * 2;
     const size_t Which = 0;
 
@@ -59,23 +62,21 @@ void bm(benchmark::State& state) {
 }
 
 void common_args(auto bm) {
-    bm->Args({2, 3})->Args({7, 4})->Args({9, 3})->Args({22, 5})->Args({58, 2})->Args({75, 85})->Args({102, 4});
-    bm->Args({325, 1})->Args({400, 50})->Args({1011, 11})->Args({1502, 23})->Args({3056, 7});
+    for (int arg1 : {1, 6, 8, 15, 23, 33, 45, 60, 75, 90, 150, 350, 800, 3000}) {
+        for (int arg2 : {1, 6, 8, 15, 23, 33, 45, 60, 75, 90}) {
+            for (int arg3 : {std::_Vector_vector_table, std::_Vector_scalar_table, std::_Vector_no_table}) {
+                bm->Args({arg1, arg2, arg3});
+            }
+        }
+    }
 }
-
-BENCHMARK(bm<AlgType::std_func, uint8_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::std_func, uint16_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::std_func, uint32_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::std_func, uint64_t>)->Apply(common_args);
 
 BENCHMARK(bm<AlgType::str_member_first, char>)->Apply(common_args);
 BENCHMARK(bm<AlgType::str_member_first, wchar_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::str_member_first, wchar_t, L'\x03B1'>)->Apply(common_args);
 BENCHMARK(bm<AlgType::str_member_first, char32_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::str_member_first, char32_t, U'\x03B1'>)->Apply(common_args);
+BENCHMARK(bm<AlgType::str_member_first, unsigned long long>)->Apply(common_args);
 
 BENCHMARK(bm<AlgType::str_member_last, char>)->Apply(common_args);
 BENCHMARK(bm<AlgType::str_member_last, wchar_t>)->Apply(common_args);
-BENCHMARK(bm<AlgType::str_member_last, wchar_t, L'\x03B1'>)->Apply(common_args);
 
 BENCHMARK_MAIN();
