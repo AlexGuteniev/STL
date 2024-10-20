@@ -2927,6 +2927,7 @@ namespace {
         return _Result;
     }
 
+#ifndef _M_ARM64EC
     namespace __std_find_meow_of {
         enum class _Strategy { _No_bitmap, _Scalar_bitmap, _Vector_bitmap };
 
@@ -2954,7 +2955,7 @@ namespace {
             }
 
             if constexpr (sizeof(_Ty) == 1) {
-                if (_Count2 <= 15 || _Product_fits_threshold((_Count1 + 15) / 16, (_Count2 + 15) / 16, 60)) {
+                if (_Count1 <= 15 || _Product_fits_threshold((_Count1 + 15) / 16, (_Count2 + 15) / 16, 60)) {
                     return _Strategy::_No_bitmap;
                 } else if (_Count1 * 1ull > _Count2 * 5ull) {
                     return _Strategy::_Vector_bitmap;
@@ -2962,29 +2963,38 @@ namespace {
                     return _Strategy::_Scalar_bitmap;
                 }
             } else if constexpr (sizeof(_Ty) == 2) {
-                if (_Count2 <= 7 || _Product_fits_threshold((_Count1 + 7) / 8, (_Count2 + 7) / 8, 60)) {
+                if (_Count1 <= 7 || _Product_fits_threshold((_Count1 + 7) / 8, (_Count2 + 7) / 8, 60)) {
                     return _Strategy::_No_bitmap;
                 } else if (_Count1 * 2ull > _Count2 * 5ull) {
                     return _Strategy::_Vector_bitmap;
                 } else {
                     return _Strategy::_Scalar_bitmap;
                 }
-            } else {
-                if (_Count1 <= 8) {
+            } else if constexpr (sizeof(_Ty) == 4) {
+                if (_Count1 <= 7 || _Product_fits_threshold((_Count1 + 7) / 8, (_Count2 + 7) / 8, 25)) {
                     return _Strategy::_No_bitmap;
-                }
-                if (_Count1 > 400) {
+                } else if (_Count1 * 4ull > _Count2 * 5ull) {
                     return _Strategy::_Vector_bitmap;
-                }
-                if (_Count2 * 2 > _Count1) {
+                } else {
                     return _Strategy::_Scalar_bitmap;
                 }
-                return _Strategy::_Vector_bitmap;
+            } else if constexpr (sizeof(_Ty) == 8) {
+                if (_Count1 <= 3 || _Product_fits_threshold((_Count1 + 3) / 4, (_Count2 + 3) / 4, 25)) {
+                    return _Strategy::_No_bitmap;
+                } else if (_Count1 > _Count2) {
+                    return _Strategy::_Vector_bitmap;
+                } else {
+                    return _Strategy::_Scalar_bitmap;
+                }
+            } else {
+                static_assert(false, "unexpected size");
             }
         }
     } // namespace __std_find_meow_of
+#endif // ! _M_ARM64EC
 
     namespace __std_find_meow_of::_Bitmap {
+#ifndef _M_ARM64EC
         template <class _Ty>
         bool _Can_fit_256_bits_sse(const _Ty* _Needle_ptr, const size_t _Needle_length) noexcept {
             if constexpr (sizeof(_Ty) == 1) {
@@ -3149,6 +3159,7 @@ namespace {
 
             return static_cast<size_t>(-1);
         }
+#endif // ! _M_ARM64EC
 
         using _Scalar_table_t = bool[256];
 
@@ -3172,6 +3183,7 @@ namespace {
             return true;
         }
 
+#ifndef _M_ARM64EC
         template <class _Ty>
         void _Build_scalar_table_no_check(
             bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
@@ -3182,7 +3194,7 @@ namespace {
                 _Table[*_Ptr] = true;
             }
         }
-
+#endif // ! _M_ARM64EC
 
         template <class _Ty>
         size_t _Impl_first_scalar(
@@ -3578,8 +3590,8 @@ namespace {
 #endif // !_M_ARM64EC
 
         template <class _Ty>
-        const void* _Dispatch_ptr(
-            const void* const _First1, const void* const _Last1, const void* const _First2, const void* const _Last2) {
+        const void* _Dispatch_ptr(const void* const _First1, const void* const _Last1, const void* const _First2,
+            const void* const _Last2) noexcept {
 #ifndef _M_ARM64EC
             if constexpr (sizeof(_Ty) <= 2) {
                 if (_Use_sse42()) {
@@ -3598,7 +3610,8 @@ namespace {
         }
 
         template <class _Ty>
-        const size_t _Pos_from_ptr(const void* const _Result, const void* const _First1, const void* const _Last1) {
+        const size_t _Pos_from_ptr(
+            const void* const _Result, const void* const _First1, const void* const _Last1) noexcept {
             if (_Result != _Last1) {
                 return _Byte_length(_First1, _Result) / sizeof(_Ty);
             } else {
