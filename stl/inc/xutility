@@ -213,7 +213,7 @@ _Ty* _Find_vectorized(_Ty* const _First, _Ty* const _Last, const _TVal _Val) noe
 }
 
 // find_first_of vectorization is likely to be a win after this size (in elements)
-_INLINE_VAR constexpr ptrdiff_t _Threshold_find_first_of = 16;
+_INLINE_VAR constexpr ptrdiff_t _Threshold_find_first_of = 0;
 
 template <class _Ty1, class _Ty2>
 _Ty1* _Find_first_of_vectorized(
