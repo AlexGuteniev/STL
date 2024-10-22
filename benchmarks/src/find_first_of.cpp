@@ -19,34 +19,18 @@ enum class AlgType { std_func, str_member_first, str_member_last };
 
 template <AlgType Alg, class T, T Start = T{'!'}>
 void bm(benchmark::State& state) {
-    const size_t Pos   = static_cast<size_t>(state.range(0));
+    const size_t HSize = static_cast<size_t>(state.range(0));
     const size_t NSize = static_cast<size_t>(state.range(1));
 
     std::_Find_first_of_alg = static_cast<std::_Find_first_alg_t>(state.range(2));
 
-    const size_t HSize = Pos * 2;
-    const size_t Which = 0;
-
     using container = conditional_t<Alg == AlgType::std_func, vector<T>, basic_string<T>>;
 
     constexpr T HaystackFiller{' '};
-    static_assert(HaystackFiller < Start, "The following iota() should not produce the haystack filler.");
+    static_assert(HaystackFiller != Start);
 
     container h(HSize, HaystackFiller);
     container n(NSize, T{0});
-
-    if (NSize - 1 > static_cast<size_t>(numeric_limits<T>::max()) - static_cast<size_t>(Start)) {
-        puts("ERROR: The following iota() would overflow.");
-        abort();
-    }
-
-    iota(n.begin(), n.end(), Start);
-
-    if (Pos >= HSize || Which >= NSize) {
-        abort();
-    }
-
-    h[Pos] = n[Which];
 
     for (auto _ : state) {
         benchmark::DoNotOptimize(h);
@@ -62,8 +46,8 @@ void bm(benchmark::State& state) {
 }
 
 void common_args(auto bm) {
-    for (int arg1 : {1, 6, 8, 15, 23, 33, 45, 60, 75, 90, 150, 350, 800, 3000}) {
-        for (int arg2 : {1, 6, 8, 15, 23, 33, 45, 60, 75, 90}) {
+    for (int arg1 : {3, 7, 15, 100, 3000}) {
+        for (int arg2 : {3, 7, 15, 100, 3000}) {
             for (int arg3 : {std::_Vector_vector_table, std::_Vector_scalar_table, std::_Vector_no_table}) {
                 bm->Args({arg1, arg2, arg3});
             }
