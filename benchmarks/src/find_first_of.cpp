@@ -19,8 +19,8 @@ enum class AlgType { std_func, str_member_first, str_member_last };
 
 template <AlgType Alg, class T, T Start = T{'!'}>
 void bm(benchmark::State& state) {
-    const size_t HSize = static_cast<size_t>(state.range(0));
-    const size_t NSize = static_cast<size_t>(state.range(1));
+    const size_t NSize = static_cast<size_t>(state.range(0));
+    const size_t HSize = static_cast<size_t>(state.range(1));
 
     std::_Find_first_of_alg = static_cast<std::_Find_first_alg_t>(state.range(2));
 
