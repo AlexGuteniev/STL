@@ -46,11 +46,10 @@ __declspec(noalias) size_t __stdcall __std_find_last_of_trivial_pos_2(
 } // extern "C"
 
 _STD_BEGIN
-
-
 enum _Find_first_alg_t {
     _Default,
     _Vector_vector_table,
+    _Vector_vector_table_alt,
     _Vector_scalar_table,
     _Vector_no_table,
 };

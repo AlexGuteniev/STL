@@ -46,9 +46,9 @@ void bm(benchmark::State& state) {
 }
 
 void common_args(auto bm) {
-    for (int arg1 : {3, 7, 15, 100, 3000}) {
-        for (int arg2 : {3, 7, 15, 100, 3000}) {
-            for (int arg3 : {std::_Vector_vector_table, std::_Vector_scalar_table, std::_Vector_no_table}) {
+    for (int arg1 : {3, 7, 15, 25, 38, 42, 50, 66, 75, 83, 100, 120, 150, 3000}) {
+        for (int arg2 : {3 /*, 7, 15, 100,*/ 3000, /*50'000*/}) {
+            for (int arg3 : {std::_Vector_vector_table, std::_Vector_vector_table_alt}) {
                 bm->Args({arg1, arg2, arg3});
             }
         }

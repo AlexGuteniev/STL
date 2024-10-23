@@ -26,6 +26,7 @@ namespace std {
     enum _Find_first_alg_t {
         _Default,
         _Vector_vector_table,
+        _Vector_vector_table_alt,
         _Vector_scalar_table,
         _Vector_no_table,
     };
@@ -2945,7 +2946,7 @@ namespace {
         template <class _Ty>
         _Strategy _Pick_strategy_avx(const size_t _Count1, const size_t _Count2) noexcept {
             if (std::_Find_first_of_alg != std::_Find_first_alg_t::_Default) {
-                if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_vector_table) {
+                if (std::_Find_first_of_alg <= std::_Find_first_alg_t::_Vector_vector_table_alt) {
                     return _Strategy::_Vector_bitmap;
                 } else if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_scalar_table) {
                     return _Strategy::_Scalar_bitmap;
@@ -2994,6 +2995,87 @@ namespace {
 #endif // ! _M_ARM64EC
 
     namespace __std_find_meow_of::_Bitmap {
+        using _Scalar_table_t = bool[256];
+
+        template <class _Ty>
+        bool _Build_scalar_table(bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
+            auto _Ptr       = static_cast<const _Ty*>(_Needle);
+            const auto _End = _Ptr + _Needle_length;
+
+            for (; _Ptr != _End; ++_Ptr) {
+                const _Ty _Val = *_Ptr;
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        return false;
+                    }
+                }
+
+                _Table[_Val] = true;
+            }
+
+            return true;
+        }
+
+#ifndef _M_ARM64EC
+        template <class _Ty>
+        void _Build_scalar_table_no_check(
+            bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
+            auto _Ptr       = static_cast<const _Ty*>(_Needle);
+            const auto _End = _Ptr + _Needle_length;
+
+            for (; _Ptr != _End; ++_Ptr) {
+                _Table[*_Ptr] = true;
+            }
+        }
+#endif // ! _M_ARM64EC
+
+        template <class _Ty>
+        size_t _Impl_first_scalar(
+            const void* const _Haystack, const size_t _Haystack_length, const bool* const _Table) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+
+            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
+                const _Ty _Val = _Haystack_ptr[_Ix];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Ix;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
+        template <class _Ty>
+        size_t _Impl_last_scalar(
+            const void* const _Haystack, size_t _Haystack_length, const bool* const _Table) noexcept {
+            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
+
+            while (_Haystack_length != 0) {
+                --_Haystack_length;
+
+                const _Ty _Val = _Haystack_ptr[_Haystack_length];
+
+                if constexpr (sizeof(_Val) > 1) {
+                    if (_Val >= 256) {
+                        continue;
+                    }
+                }
+
+                if (_Table[_Val]) {
+                    return _Haystack_length;
+                }
+            }
+
+            return static_cast<size_t>(-1);
+        }
+
 #ifndef _M_ARM64EC
         template <class _Ty>
         bool _Can_fit_256_bits_sse(const _Ty* _Needle_ptr, const size_t _Needle_length) noexcept {
@@ -3093,12 +3175,40 @@ namespace {
         }
 
         template <class _Ty>
+        __m256i _Make_bitmap_alt(const _Ty* _Needle_ptr, const size_t _Needle_length) noexcept {
+            alignas(32) uint8_t _Table[256] = {};
+
+            const _Ty* const _Stop = _Needle_ptr + _Needle_length;
+
+            for (; _Needle_ptr != _Stop; ++_Needle_ptr) {
+                _Table[*_Needle_ptr] = 0xFF;
+            }
+
+            auto _Table_as_avx = reinterpret_cast<const __m256i*>(_Table);
+
+            return _mm256_setr_epi32( //
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 0)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 1)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 2)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 3)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 4)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 5)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 6)),
+                _mm256_movemask_epi8(_mm256_load_si256(_Table_as_avx + 7)));
+        }
+
+        template <class _Ty>
         size_t _Impl_first_avx(const void* const _Haystack, const size_t _Haystack_length, const void* const _Needle,
             const size_t _Needle_length) noexcept {
             const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
             const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
 
-            const __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+            __m256i _Bitmap;
+            if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_vector_table) {
+                _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+            } else {
+                _Bitmap = _Make_bitmap_alt(_Needle_ptr, _Needle_length);
+            }
 
             const size_t _Haystack_length_vec = _Haystack_length & ~size_t{7};
             for (size_t _Ix = 0; _Ix != _Haystack_length_vec; _Ix += 8) {
@@ -3132,7 +3242,12 @@ namespace {
             const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
             const auto _Needle_ptr   = static_cast<const _Ty*>(_Needle);
 
-            const __m256i _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+            __m256i _Bitmap;
+            if (std::_Find_first_of_alg == std::_Find_first_alg_t::_Vector_vector_table) {
+                _Bitmap = _Make_bitmap(_Needle_ptr, _Needle_length);
+            } else {
+                _Bitmap = _Make_bitmap_alt(_Needle_ptr, _Needle_length);
+            }
 
             while (_Haystack_length >= 8) {
                 _Haystack_length -= 8;
@@ -3160,87 +3275,6 @@ namespace {
             return static_cast<size_t>(-1);
         }
 #endif // ! _M_ARM64EC
-
-        using _Scalar_table_t = bool[256];
-
-        template <class _Ty>
-        bool _Build_scalar_table(bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
-            auto _Ptr       = static_cast<const _Ty*>(_Needle);
-            const auto _End = _Ptr + _Needle_length;
-
-            for (; _Ptr != _End; ++_Ptr) {
-                const _Ty _Val = *_Ptr;
-
-                if constexpr (sizeof(_Val) > 1) {
-                    if (_Val >= 256) {
-                        return false;
-                    }
-                }
-
-                _Table[_Val] = true;
-            }
-
-            return true;
-        }
-
-#ifndef _M_ARM64EC
-        template <class _Ty>
-        void _Build_scalar_table_no_check(
-            bool* _Table, const void* const _Needle, const size_t _Needle_length) noexcept {
-            auto _Ptr       = static_cast<const _Ty*>(_Needle);
-            const auto _End = _Ptr + _Needle_length;
-
-            for (; _Ptr != _End; ++_Ptr) {
-                _Table[*_Ptr] = true;
-            }
-        }
-#endif // ! _M_ARM64EC
-
-        template <class _Ty>
-        size_t _Impl_first_scalar(
-            const void* const _Haystack, const size_t _Haystack_length, const bool* const _Table) noexcept {
-            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
-
-            for (size_t _Ix = 0; _Ix != _Haystack_length; ++_Ix) {
-                const _Ty _Val = _Haystack_ptr[_Ix];
-
-                if constexpr (sizeof(_Val) > 1) {
-                    if (_Val >= 256) {
-                        continue;
-                    }
-                }
-
-                if (_Table[_Val]) {
-                    return _Ix;
-                }
-            }
-
-            return static_cast<size_t>(-1);
-        }
-
-        template <class _Ty>
-        size_t _Impl_last_scalar(
-            const void* const _Haystack, size_t _Haystack_length, const bool* const _Table) noexcept {
-            const auto _Haystack_ptr = static_cast<const _Ty*>(_Haystack);
-
-            while (_Haystack_length != 0) {
-                --_Haystack_length;
-
-                const _Ty _Val = _Haystack_ptr[_Haystack_length];
-
-                if constexpr (sizeof(_Val) > 1) {
-                    if (_Val >= 256) {
-                        continue;
-                    }
-                }
-
-                if (_Table[_Val]) {
-                    return _Haystack_length;
-                }
-            }
-
-            return static_cast<size_t>(-1);
-        }
     } // namespace __std_find_meow_of::_Bitmap
 
     namespace __std_find_meow_of::_First {
