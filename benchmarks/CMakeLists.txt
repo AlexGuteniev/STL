@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-cmake_minimum_required(VERSION 3.30.0)
+cmake_minimum_required(VERSION 3.31.0)
 project(msvc_standard_libraries_benchmarks LANGUAGES CXX)
 
 if(DEFINED STL_BINARY_DIR)
@@ -23,7 +23,7 @@ if(DEFINED STL_BINARY_DIR)
         set(VCLIBS_I386_OR_AMD64 "i386")
     elseif(VCLIBS_TARGET_ARCHITECTURE STREQUAL "x64")
         set(VCLIBS_I386_OR_AMD64 "amd64")
-    elseif(VCLIBS_TARGET_ARCHITECTURE STREQUAL "armv7")
+    elseif(VCLIBS_TARGET_ARCHITECTURE MATCHES "^(arm|armv7)$")
         set(VCLIBS_I386_OR_AMD64 "arm")
     elseif(VCLIBS_TARGET_ARCHITECTURE STREQUAL "arm64")
         set(VCLIBS_I386_OR_AMD64 "arm64")
