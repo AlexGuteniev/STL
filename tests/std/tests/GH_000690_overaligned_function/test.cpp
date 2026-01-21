@@ -65,4 +65,7 @@ int main() {
 #if _HAS_CXX23
     test<std::move_only_function<void(const void* storage, std::size_t storage_size)>>();
 #endif
+#if _HAS_CXX26
+    test<std::copyable_function<void(const void* storage, std::size_t storage_size)>>();
+#endif
 }

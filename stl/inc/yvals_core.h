@@ -413,6 +413,7 @@
 // _HAS_CXX26 controls:
 // P1383R2 More constexpr For <cmath> And <complex>
 //     (partial implementation)
+// P2548R6 copyable_function
 
 // Parallel Algorithms Notes
 // C++ allows an implementation to implement parallel algorithms as calls to the serial algorithms.
@@ -1817,6 +1818,11 @@ _EMIT_STL_ERROR(STL1004, "C++98 unexpected() is incompatible with C++23 unexpect
 #define __cpp_lib_tuple_like                  202207L
 #define __cpp_lib_unreachable                 202202L
 #endif // _HAS_CXX23
+
+// C++26
+#if _HAS_CXX26
+#define __cpp_lib_copyable_function 202306L
+#endif // _HAS_CXX26
 
 // macros with language mode sensitivity
 #if _HAS_CXX20
