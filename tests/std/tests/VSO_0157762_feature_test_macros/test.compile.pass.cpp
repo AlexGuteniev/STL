@@ -301,6 +301,12 @@ STATIC_ASSERT(__cpp_lib_containers_ranges == 202202L);
 #error __cpp_lib_containers_ranges is defined
 #endif
 
+#if _HAS_CXX26
+STATIC_ASSERT(__cpp_lib_copyable_function == 202306L);
+#elif defined(__cpp_lib_copyable_function)
+#error __cpp_lib_copyable_function is defined
+#endif
+
 #ifdef __cpp_impl_coroutine
 STATIC_ASSERT(__cpp_lib_coroutine == 201902L);
 #elif defined(__cpp_lib_coroutine)
