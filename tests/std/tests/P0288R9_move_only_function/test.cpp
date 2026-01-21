@@ -125,21 +125,19 @@ int __fastcall plain_callable(int a, pass_this_by_ref& b) {
     return 42;
 }
 
-using test_function_t = move_only_function<int(int, pass_this_by_ref&)>;
-
-template <class F, class... Args>
+template <class Function, bool Copyable, class F, class... Args>
 void test_construct_impl(int expect, Args... args) {
     {
         pass_this_by_ref x{63};
 
-        test_function_t constructed_directly(F{args...});
+        Function constructed_directly(F{args...});
 
         assert(constructed_directly(23, x) == expect);
 
         assert(constructed_directly);
         assert(constructed_directly != nullptr);
 
-        test_function_t move_constructed = move(constructed_directly);
+        Function move_constructed = move(constructed_directly);
 
         assert(move_constructed(23, x) == expect);
 
@@ -148,7 +146,7 @@ void test_construct_impl(int expect, Args... args) {
         }
 
         F v{args...};
-        test_function_t constructed_lvalue(v);
+        Function constructed_lvalue(v);
         if constexpr (is_class_v<F>) {
             assert(counter::copies == 1);
             counter::copies = 0;
@@ -158,11 +156,24 @@ void test_construct_impl(int expect, Args... args) {
             counter::copies = 0;
             counter::moves  = 0;
         }
-        test_function_t constructed_in_place(in_place_type<F>, args...);
+        Function constructed_in_place(in_place_type<F>, args...);
         assert(constructed_in_place(23, x) == expect);
         if constexpr (is_class_v<F>) {
             assert(counter::copies == 0);
             assert(counter::moves == 0);
+        }
+
+        if constexpr (Copyable) {
+            Function copy(move_constructed);
+            assert(copy(23, x) == expect);
+            assert(move_constructed(23, x) == expect);
+            if constexpr (is_class_v<F>) {
+                assert(counter::copies == 1);
+                assert(counter::moves == 0);
+                counter::copies = 0;
+            }
+        } else {
+            static_assert(!is_copy_constructible_v<Function>);
         }
     }
 
@@ -171,12 +182,13 @@ void test_construct_impl(int expect, Args... args) {
     }
 }
 
-void test_assign() {
+template <class Function>
+void test_move_assign() {
     pass_this_by_ref x{63};
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{large_callable{}};
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
         f2 = move(f1);
         assert(f2(23, x) == 38);
         f1 = large_callable{};
@@ -184,8 +196,8 @@ void test_assign() {
     }
 
     {
-        test_function_t f1{large_callable{}};
-        test_function_t f2{small_callable{}};
+        Function f1{large_callable{}};
+        Function f2{small_callable{}};
         f2 = move(f1);
         assert(f2(23, x) == 39);
         f1 = small_callable{};
@@ -193,8 +205,8 @@ void test_assign() {
     }
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{odd_cc_callable{}};
+        Function f1{small_callable{}};
+        Function f2{odd_cc_callable{}};
         f2 = move(f1);
         assert(f2(23, x) == 38);
         f1 = odd_cc_callable{};
@@ -202,8 +214,8 @@ void test_assign() {
     }
 
     {
-        test_function_t f1{large_callable{}};
-        test_function_t f2{large_implicit_ptr_callable{}};
+        Function f1{large_callable{}};
+        Function f2{large_implicit_ptr_callable{}};
         f2 = move(f1);
         assert(f2(23, x) == 39);
         f1 = large_implicit_ptr_callable{};
@@ -217,8 +229,8 @@ void test_assign() {
 #pragma warning(push)
 #pragma warning(disable : 26800) // use a moved-from object
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{large_callable{}};
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
         f1 = move(f1); // deliberate self-move as a test case
         assert(f1(23, x) == 38);
         f2 = move(f2); // deliberate self-move as a test case
@@ -228,22 +240,90 @@ void test_assign() {
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif // __clang__
+}
+
+template <class Function>
+void test_copy_assign() {
+    pass_this_by_ref x{63};
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{large_callable{}};
-        test_function_t f3{small_callable{}};
-        test_function_t f4{large_callable{}};
-        test_function_t f5{nullptr};
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
+        f2 = f1;
+        assert(f2(23, x) == 38);
+        f1 = large_callable{};
+        assert(f1(23, x) == 39);
+    }
+
+    {
+        Function f1{large_callable{}};
+        Function f2{small_callable{}};
+        f2 = f1;
+        assert(f2(23, x) == 39);
+        f1 = small_callable{};
+        assert(f1(23, x) == 38);
+    }
+
+    {
+        Function f1{small_callable{}};
+        Function f2{odd_cc_callable{}};
+        f2 = f1;
+        assert(f2(23, x) == 38);
+        f1 = odd_cc_callable{};
+        assert(f1(23, x) == 40);
+    }
+
+    {
+        Function f1{large_callable{}};
+        Function f2{large_implicit_ptr_callable{}};
+        f2 = f1;
+        assert(f2(23, x) == 39);
+        f1 = large_implicit_ptr_callable{};
+        assert(f1(23, x) == 41);
+    }
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
+#endif // __clang__
+    {
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
+        f1 = f1; // deliberate self-assign as a test case
+        assert(f1(23, x) == 38);
+        f2 = f2; // deliberate self-assign as a test case
+        assert(f2(23, x) == 39);
+    }
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif // __clang__
+}
+
+template <class Function, class OtherFunction, bool Copyable, bool OtherCopyable>
+void test_null_assign() {
+    {
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
+        Function f3{small_callable{}};
+        Function f4{large_callable{}};
+        Function f5{nullptr};
+        Function f6{Function{}};
         assert(f1);
         assert(f2);
         assert(f3);
         assert(f4);
         assert(!f5);
+        assert(!f6);
+
+        if constexpr (!Copyable || OtherCopyable) {
+            Function f7{OtherFunction{}};
+            assert(!f7);
+        }
+
         f1 = nullptr;
         f2 = nullptr;
-        f3 = test_function_t{nullptr};
-        f4 = test_function_t{nullptr};
+        f3 = Function{nullptr};
+        f4 = Function{nullptr};
         assert(!f1);
         assert(!f2);
         assert(!f3);
@@ -251,36 +331,37 @@ void test_assign() {
     }
 }
 
+template <class Function>
 void test_swap() {
     pass_this_by_ref x{63};
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{large_callable{}};
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
         swap(f1, f2);
         assert(f2(23, x) == 38);
         assert(f1(23, x) == 39);
     }
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{odd_cc_callable{}};
+        Function f1{small_callable{}};
+        Function f2{odd_cc_callable{}};
         f1.swap(f2);
         assert(f2(23, x) == 38);
         assert(f1(23, x) == 40);
     }
 
     {
-        test_function_t f1{large_callable{}};
-        test_function_t f2{large_implicit_ptr_callable{}};
+        Function f1{large_callable{}};
+        Function f2{large_implicit_ptr_callable{}};
         f2.swap(f1);
         assert(f2(23, x) == 39);
         assert(f1(23, x) == 41);
     }
 
     {
-        test_function_t f1{small_callable{}};
-        test_function_t f2{large_callable{}};
+        Function f1{small_callable{}};
+        Function f2{large_callable{}};
         swap(f1, f1);
         f2.swap(f2);
         assert(f1(23, x) == 38);
@@ -288,13 +369,14 @@ void test_swap() {
     }
 }
 
+template <class Function>
 void test_empty() {
-    test_function_t no_callable;
+    Function no_callable;
     assert(!no_callable);
     assert(no_callable == nullptr);
     assert(nullptr == no_callable);
 
-    test_function_t no_callable_moved = move(no_callable);
+    Function no_callable_moved = move(no_callable);
 #pragma warning(push)
 #pragma warning(disable : 26800) // use a moved-from object
     assert(!no_callable);
@@ -304,6 +386,7 @@ void test_empty() {
     assert(no_callable_moved == nullptr);
 }
 
+template <template <class...> class Function>
 void test_ptr() {
     struct s_t {
         int f(int p) {
@@ -317,9 +400,9 @@ void test_ptr() {
         }
     };
 
-    move_only_function<int(s_t*, int)> mem_fun_ptr(&s_t::f);
-    move_only_function<int(s_t*)> mem_ptr(&s_t::j);
-    move_only_function<int(int)> fun_ptr(&s_t::g);
+    Function<int(s_t*, int)> mem_fun_ptr(&s_t::f);
+    Function<int(s_t*)> mem_ptr(&s_t::j);
+    Function<int(int)> fun_ptr(&s_t::g);
 
     s_t s;
     assert(mem_fun_ptr);
@@ -329,18 +412,19 @@ void test_ptr() {
     assert(fun_ptr);
     assert(fun_ptr(34) == 31);
 
-    move_only_function<int(s_t*, int)> mem_fun_ptr_n(static_cast<decltype(&s_t::f)>(nullptr));
-    move_only_function<int(s_t*)> mem_ptr_n(static_cast<decltype(&s_t::j)>(nullptr));
-    move_only_function<int(int)> fun_ptr_n(static_cast<decltype(&s_t::g)>(nullptr));
+    Function<int(s_t*, int)> mem_fun_ptr_n(static_cast<decltype(&s_t::f)>(nullptr));
+    Function<int(s_t*)> mem_ptr_n(static_cast<decltype(&s_t::j)>(nullptr));
+    Function<int(int)> fun_ptr_n(static_cast<decltype(&s_t::g)>(nullptr));
 
     assert(!mem_fun_ptr_n);
     assert(!mem_ptr_n);
     assert(!fun_ptr_n);
 }
 
+template <template <class...> class Function>
 void test_inner() {
-    move_only_function<short(long, long)> f1(nullptr);
-    move_only_function<int(int, int)> f2 = move(f1);
+    Function<short(long, long)> f1(nullptr);
+    Function<int(int, int)> f2 = move(f1);
     assert(!f2);
 #pragma warning(push)
 #pragma warning(disable : 26800) // use a moved-from object
@@ -349,9 +433,17 @@ void test_inner() {
 #pragma warning(pop)
 }
 
+struct noncopyablle_base {
+    noncopyablle_base()                                    = default;
+    noncopyablle_base(const noncopyablle_base&)            = delete;
+    noncopyablle_base& operator=(const noncopyablle_base&) = delete;
+};
 
+struct copyable_base {};
+
+template <template <class...> class Function, bool Copyable>
 void test_inplace_list() {
-    struct in_place_list_constructible {
+    struct in_place_list_constructible : conditional_t<Copyable, copyable_base, noncopyablle_base> {
         in_place_list_constructible(initializer_list<int> li) {
             int x = 0;
             for (int i : li) {
@@ -368,18 +460,15 @@ void test_inplace_list() {
             }
         }
 
-        in_place_list_constructible(const in_place_list_constructible&)            = delete;
-        in_place_list_constructible& operator=(const in_place_list_constructible&) = delete;
-
         int operator()(int i) {
             return i - 1;
         }
     };
 
-    move_only_function<int(int)> f1(in_place_type<in_place_list_constructible>, {1, 2, 3, 4, 5});
+    Function<int(int)> f1(in_place_type<in_place_list_constructible>, {1, 2, 3, 4, 5});
     assert(f1(5) == 4);
 
-    move_only_function<int(int)> f2(in_place_type<in_place_list_constructible>, {-1, -2, -3, -4, -5}, "fox");
+    Function<int(int)> f2(in_place_type<in_place_list_constructible>, {-1, -2, -3, -4, -5}, "fox");
     assert(f2(8) == 7);
 }
 
@@ -391,9 +480,10 @@ struct test_noexcept_t {
     }
 };
 
+template <template <class...> class Function>
 void test_noexcept() {
-    using f_x  = move_only_function<int()>;
-    using f_nx = move_only_function<int() noexcept>;
+    using f_x  = Function<int()>;
+    using f_nx = Function<int() noexcept>;
 
     static_assert(!noexcept(declval<f_x>()()));
 #ifdef __cpp_noexcept_function_type
@@ -433,9 +523,10 @@ struct test_const_t<true> {
     }
 };
 
+template <template <class...> class Function>
 void test_const() {
-    using f_c  = move_only_function<int() const>;
-    using f_nc = move_only_function<int()>;
+    using f_c  = Function<int() const>;
+    using f_nc = Function<int()>;
 
     static_assert(is_constructible_v<f_nc, test_const_t<false>>);
     f_nc f1(test_const_t<false>{});
@@ -454,52 +545,55 @@ void test_const() {
     assert(f4() == 456);
 }
 
-
+template <template <class...> class Function>
 void test_qual() {
-    move_only_function<int(int)> f1([](auto i) { return i + 1; });
+    Function<int(int)> f1([](auto i) { return i + 1; });
     assert(f1(1) == 2);
-    move_only_function<int(int) &> f2([](auto i) { return i + 1; });
+    Function<int(int) &> f2([](auto i) { return i + 1; });
     assert(f2(2) == 3);
-    move_only_function<int(int) &&> f3([](auto i) { return i + 1; });
+    Function<int(int) &&> f3([](auto i) { return i + 1; });
     assert(move(f3)(3) == 4);
 
-    move_only_function<int(int) const> f1c([](auto i) { return i + 1; });
+    Function<int(int) const> f1c([](auto i) { return i + 1; });
     assert(f1c(4) == 5);
-    move_only_function<int(int) const&> f2c([](auto i) { return i + 1; });
+    Function<int(int) const&> f2c([](auto i) { return i + 1; });
     assert(f2c(5) == 6);
-    move_only_function<int(int) const&&> f3c([](auto i) { return i + 1; });
+    Function<int(int) const&&> f3c([](auto i) { return i + 1; });
     assert(move(f3c)(6) == 7);
 
-    move_only_function<int(int) noexcept> f1_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) noexcept> f1_nx([](auto i) noexcept { return i + 1; });
     assert(f1_nx(1) == 2);
-    move_only_function<int(int) & noexcept> f2_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) & noexcept> f2_nx([](auto i) noexcept { return i + 1; });
     assert(f2_nx(2) == 3);
-    move_only_function<int(int) && noexcept> f3_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) && noexcept> f3_nx([](auto i) noexcept { return i + 1; });
     assert(move(f3_nx)(3) == 4);
 
-    move_only_function<int(int) const noexcept> f1c_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) const noexcept> f1c_nx([](auto i) noexcept { return i + 1; });
     assert(f1c_nx(4) == 5);
-    move_only_function<int(int) const & noexcept> f2c_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) const & noexcept> f2c_nx([](auto i) noexcept { return i + 1; });
     assert(f2c_nx(5) == 6);
-    move_only_function<int(int) const && noexcept> f3c_nx([](auto i) noexcept { return i + 1; });
+    Function<int(int) const && noexcept> f3c_nx([](auto i) noexcept { return i + 1; });
     assert(move(f3c_nx)(6) == 7);
 }
 
-static_assert(is_same_v<move_only_function<void()>::result_type, void>);
-static_assert(is_same_v<move_only_function<short(long&) &>::result_type, short>);
-static_assert(is_same_v<move_only_function<int(char*) &&>::result_type, int>);
-static_assert(is_same_v<move_only_function<void() const>::result_type, void>);
-static_assert(is_same_v<move_only_function<short(long&) const&>::result_type, short>);
-static_assert(is_same_v<move_only_function<int(char*) const&&>::result_type, int>);
+template <template <class...> class Function>
+void test_result() {
+    static_assert(is_same_v<typename Function<void()>::result_type, void>);
+    static_assert(is_same_v<typename Function<short(long&) &>::result_type, short>);
+    static_assert(is_same_v<typename Function<int(char*) &&>::result_type, int>);
+    static_assert(is_same_v<typename Function<void() const>::result_type, void>);
+    static_assert(is_same_v<typename Function<short(long&) const&>::result_type, short>);
+    static_assert(is_same_v<typename Function<int(char*) const&&>::result_type, int>);
 
 #ifdef __cpp_noexcept_function_type
-static_assert(is_same_v<move_only_function<void() noexcept>::result_type, void>);
-static_assert(is_same_v<move_only_function<short(long&) & noexcept>::result_type, short>);
-static_assert(is_same_v<move_only_function<int(char*) && noexcept>::result_type, int>);
-static_assert(is_same_v<move_only_function<void() const noexcept>::result_type, void>);
-static_assert(is_same_v<move_only_function<short(long&) const & noexcept>::result_type, short>);
-static_assert(is_same_v<move_only_function<int(char*) const && noexcept>::result_type, int>);
+    static_assert(is_same_v<typename Function<void() noexcept>::result_type, void>);
+    static_assert(is_same_v<typename Function<short(long&) & noexcept>::result_type, short>);
+    static_assert(is_same_v<typename Function<int(char*) && noexcept>::result_type, int>);
+    static_assert(is_same_v<typename Function<void() const noexcept>::result_type, void>);
+    static_assert(is_same_v<typename Function<short(long&) const & noexcept>::result_type, short>);
+    static_assert(is_same_v<typename Function<int(char*) const && noexcept>::result_type, int>);
 #endif // ^^^ defined(__cpp_noexcept_function_type) ^^^
+}
 
 bool fail_allocations = false;
 
@@ -521,50 +615,78 @@ void operator delete(void* p) noexcept {
     free(p);
 }
 
+template <template <class...> class Function, bool Copyable>
 void test_except() {
     struct throwing {
         throwing() = default;
-        throwing(throwing&&) { // not noexcept to avoid small functor optimization
+        throwing(const throwing&)
+        {
             throw runtime_error{"boo"};
         }
+
         void operator()() {}
     };
+
+    static_assert(!is_nothrow_move_constructible_v<throwing>);
 
     struct not_throwing {
         not_throwing() = default;
-        not_throwing(not_throwing&&) {} // not noexcept to avoid small functor optimization
+        not_throwing(const not_throwing&) {}
         void operator()() {}
     };
 
+    static_assert(!is_nothrow_move_constructible_v<not_throwing>); // avoid small function optimization
+
     try {
-        move_only_function<void()> f{throwing{}};
+        Function<void()> f{throwing{}};
         assert(false); // unreachable
     } catch (const runtime_error&) {
     }
 
     try {
         fail_allocations = true;
-        move_only_function<void()> f{not_throwing{}};
+        Function<void()> f{not_throwing{}};
         assert(false); // unreachable
     } catch (const bad_alloc&) {
         fail_allocations = false;
     }
 }
 
+template <template <class...> class Function, template <class...> class OtherFunction, bool Copyable,
+    bool OtherCopyable>
+void test() {
+    using test_function_t = Function<int(int, pass_this_by_ref&)>;
+    using test_other_function_t = OtherFunction<int(int, pass_this_by_ref&)>;
+
+     test_construct_impl<test_function_t, Copyable, small_callable>(38);
+     test_construct_impl<test_function_t, Copyable, large_callable>(39);
+     test_construct_impl<test_function_t, Copyable, odd_cc_callable>(40);
+     test_construct_impl<test_function_t, Copyable, large_implicit_ptr_callable>(41);
+     test_construct_impl<test_function_t, Copyable, decltype(&plain_callable)>(42, plain_callable);
+
+     test_move_assign<test_function_t>();
+     if constexpr (Copyable) {
+         test_copy_assign<test_function_t>();
+     }
+     test_null_assign<test_function_t, test_other_function_t, Copyable, OtherCopyable>();
+     test_swap<test_function_t>();
+     test_empty<test_function_t>();
+
+     test_ptr<Function>();
+     test_inner<Function>();
+     test_inplace_list<Function, Copyable>();
+     test_noexcept<Function>();
+     test_const<Function>();
+     test_qual<Function>();
+     test_result<Function>();
+     test_except<Function, Copyable>();
+}
+
 int main() {
-    test_construct_impl<small_callable>(38);
-    test_construct_impl<large_callable>(39);
-    test_construct_impl<odd_cc_callable>(40);
-    test_construct_impl<large_implicit_ptr_callable>(41);
-    test_construct_impl<decltype(&plain_callable)>(42, plain_callable);
-    test_assign();
-    test_swap();
-    test_empty();
-    test_ptr();
-    test_inner();
-    test_inplace_list();
-    test_noexcept();
-    test_const();
-    test_qual();
-    test_except();
+#if _HAS_CXX26
+    test<move_only_function, copyable_function, false, true>();
+    test<copyable_function, move_only_function, true, false>();
+#else // ^^^ _HAS_CXX26 / !_HAS_CXX26 vvv
+    test<move_only_function, move_only_function, false, false>();
+#endif // ^^^ !_HAS_CXX26 ^^^
 }
