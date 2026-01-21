@@ -181,4 +181,13 @@ void test_move_only_function() {
     move_only_function<void(int) const>{validating_large_identity{}};
 }
 #endif // _HAS_CXX23
+
+#if _HAS_CXX26
+void test_coypable_function() {
+    copyable_function<void(validator) const>{simple_identity{}};
+    copyable_function<void(validator) const>{simple_large_identity{}};
+    copyable_function<void(int) const>{validating_identity{}};
+    copyable_function<void(int) const>{validating_large_identity{}};
+}
+#endif // _HAS_CXX26
 #endif // ^^^ no workaround ^^^
