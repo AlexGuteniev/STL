@@ -128,6 +128,16 @@ void test_wrapped_copy_call(const int expected_copies) {
     assert(outer(copy_counter{}) == expected_copies);
 }
 
+template <class OuterWrapper, class MiddleWrapper, class InnerWrapper, class Callable>
+void test_wrapped_copy_copy_call(const int expected_copies) {
+    InnerWrapper inner{Callable{}};
+    MiddleWrapper middle{inner};
+    OuterWrapper outer{middle};
+    assert(inner);
+    assert(middle);
+    assert(outer(copy_counter{}) == expected_copies);
+}
+
 template <class Wrapper>
 void check_call_null(Wrapper& wrapper, const bool throws) {
     if (throws) {
@@ -163,6 +173,8 @@ int main() {
     alloc_checker{1}, test_plain_call<function<fn_type>, large_callable>(0);
     alloc_checker{0}, test_plain_call<move_only_function<fn_type>, small_callable>(0);
     alloc_checker{1}, test_plain_call<move_only_function<fn_type>, large_callable>(0);
+    alloc_checker{0}, test_plain_call<copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{1}, test_plain_call<copyable_function<fn_type>, large_callable>(0);
 
     // Moves to the same
     alloc_checker{0}, test_wrapped_move_call<function<fn_type>, function<fn_type>, small_callable>(0);
@@ -173,6 +185,10 @@ int main() {
         test_wrapped_move_call<move_only_function<fn_type>, move_only_function<fn_type>, small_callable>(0);
     alloc_checker{1},
         test_wrapped_move_call<move_only_function<fn_type>, move_only_function<fn_type>, large_callable>(0);
+    alloc_checker{0}, test_wrapped_move_call<copyable_function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{1}, test_wrapped_move_call<copyable_function<fn_type>, copyable_function<fn_type>, large_callable>(0);
+    alloc_checker{0}, test_wrapped_copy_call<copyable_function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{2}, test_wrapped_copy_call<copyable_function<fn_type>, copyable_function<fn_type>, large_callable>(0);
 
     // Abominables and noexcept specifier
     alloc_checker{0},
@@ -183,9 +199,27 @@ int main() {
         test_wrapped_move_call<move_only_function<fn_type>, move_only_function<fn_type_c>, small_callable>(0);
     alloc_checker{1},
         test_wrapped_move_call<move_only_function<fn_type>, move_only_function<fn_type_c>, large_callable>(0);
+    alloc_checker{0},
+        test_wrapped_move_call<copyable_function<fn_type_r>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{1},
+        test_wrapped_move_call<copyable_function<fn_type_r>, copyable_function<fn_type>, large_callable>(0);
+    alloc_checker{0},
+        test_wrapped_move_call<copyable_function<fn_type>, copyable_function<fn_type_c>, small_callable>(0);
+    alloc_checker{1},
+        test_wrapped_move_call<copyable_function<fn_type>, copyable_function<fn_type_c>, large_callable>(0);
+    alloc_checker{0},
+        test_wrapped_copy_call<copyable_function<fn_type_r>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{2},
+        test_wrapped_copy_call<copyable_function<fn_type_r>, copyable_function<fn_type>, large_callable>(0);
+    alloc_checker{0},
+        test_wrapped_copy_call<copyable_function<fn_type>, copyable_function<fn_type_c>, small_callable>(0);
+    alloc_checker{2},
+        test_wrapped_copy_call<copyable_function<fn_type>, copyable_function<fn_type_c>, large_callable>(0);
 
     static_assert(!is_constructible_v<move_only_function<fn_type>, move_only_function<fn_type_r>>);
     static_assert(!is_constructible_v<move_only_function<fn_type_c>, move_only_function<fn_type>>);
+    static_assert(!is_constructible_v<copyable_function<fn_type>, copyable_function<fn_type_r>>);
+    static_assert(!is_constructible_v<copyable_function<fn_type_c>, copyable_function<fn_type>>);
 
 #ifdef __cpp_noexcept_function_type
     alloc_checker{0},
@@ -224,12 +258,50 @@ int main() {
         test_wrapped_copy_call<move_only_function<fn_type>, function<fn_type>, small_callable>(0);
     alloc_checker{2}, test_wrapped_copy_call<move_only_function<fn_type>, function<fn_type>, large_callable>(0);
 
+    // Moves from function to copyable_function
+    alloc_checker{is_64_bit ? 0 : 1},
+        test_wrapped_move_call<copyable_function<fn_type>, function<fn_type>, small_callable>(0);
+    alloc_checker{1}, test_wrapped_move_call<copyable_function<fn_type>, function<fn_type>, large_callable>(0);
+    alloc_checker{is_64_bit ? 0 : 1},
+        test_wrapped_copy_call<copyable_function<fn_type>, function<fn_type>, small_callable>(0);
+    alloc_checker{2}, test_wrapped_copy_call<copyable_function<fn_type>, function<fn_type>, large_callable>(0);
+
+    alloc_checker{is_64_bit ? 0 : 1}, test_wrapped_move_move_call<copyable_function<fn_type>,
+                                          copyable_function<fn_type>, function<fn_type>, small_callable>(0);
+    alloc_checker{1}, test_wrapped_move_move_call<copyable_function<fn_type>, copyable_function<fn_type>,
+                          function<fn_type>, large_callable>(0);
+    alloc_checker{is_64_bit ? 0 : 2}, test_wrapped_copy_copy_call<copyable_function<fn_type>,
+                                          copyable_function<fn_type>, function<fn_type>, small_callable>(0);
+    alloc_checker{3}, test_wrapped_copy_copy_call<copyable_function<fn_type>, copyable_function<fn_type>,
+                          function<fn_type>, large_callable>(0);
+
+    // Put copyable_function into move_only_function
+    alloc_checker{0},
+        test_wrapped_move_call<move_only_function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{1},
+        test_wrapped_move_call<move_only_function<fn_type>, copyable_function<fn_type>, large_callable>(0);
+    alloc_checker{0},
+        test_wrapped_copy_call<move_only_function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{2},
+        test_wrapped_copy_call<move_only_function<fn_type>, copyable_function<fn_type>, large_callable>(0);
+
+    // Put copyable_function into function. Avoid extra invoke (and extra arg copying), but don't do anything else.
+    // In particular, don't decomopse inner copyable_function due to having function<R(A...)>::target().
+    alloc_checker{1}, test_wrapped_move_call<function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{2}, test_wrapped_move_call<function<fn_type>, copyable_function<fn_type>, large_callable>(0);
+    alloc_checker{1}, test_wrapped_copy_call<function<fn_type>, copyable_function<fn_type>, small_callable>(0);
+    alloc_checker{3}, test_wrapped_copy_call<function<fn_type>, copyable_function<fn_type>, large_callable>(0);
+
     // nulls
     alloc_checker{0}, test_plain_null<function<fn_type>>(true);
     alloc_checker{0}, test_plain_null<move_only_function<fn_type>>(false);
+    alloc_checker{0}, test_plain_null<copyable_function<fn_type>>(false);
 
     // wrapped nulls
     alloc_checker{0}, test_wrapped_null<function<fn_type>, function<fn_type>>(true, true);
     alloc_checker{0}, test_wrapped_null<move_only_function<fn_type>, move_only_function<fn_type>>(true, false);
     alloc_checker{0}, test_wrapped_null<move_only_function<fn_type>, function<fn_type>>(false, true);
+    alloc_checker{0}, test_wrapped_null<copyable_function<fn_type>, copyable_function<fn_type>>(true, false);
+    alloc_checker{0}, test_wrapped_null<copyable_function<fn_type>, function<fn_type>>(false, true);
+    alloc_checker{1}, test_wrapped_null<function<fn_type>, copyable_function<fn_type>>(false, false);
 }
