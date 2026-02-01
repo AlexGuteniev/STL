@@ -128,6 +128,14 @@ void test_wrapped_copy_call(const int expected_copies) {
     assert(outer(copy_counter{}) == expected_copies);
 }
 
+
+template <class OuterWrapper, class InnerWrapper>
+void test_wrapped_ref_call(const int expected_copies) {
+    InnerWrapper inner{[](const copy_counter& counter) noexcept { return counter.count; }};
+    OuterWrapper outer{inner};
+    assert(outer(copy_counter{}) == expected_copies);
+}
+
 template <class Wrapper>
 void check_call_null(Wrapper& wrapper, const bool throws) {
     if (throws) {
@@ -137,7 +145,7 @@ void check_call_null(Wrapper& wrapper, const bool throws) {
         } catch (const bad_function_call&) {
         }
     } else {
-        // UB that in our implementation tries to call doom function; we do not test that
+        // UB that in our implementation tries to call doom function for some cases; we do not test that
     }
 }
 
@@ -232,4 +240,31 @@ int main() {
     alloc_checker{0}, test_wrapped_null<function<fn_type>, function<fn_type>>(true, true);
     alloc_checker{0}, test_wrapped_null<move_only_function<fn_type>, move_only_function<fn_type>>(true, false);
     alloc_checker{0}, test_wrapped_null<move_only_function<fn_type>, function<fn_type>>(false, true);
+
+    // function_ref in other wrappres.
+    // Currently only unwrapping function, but not move_only_function
+    // The thunk will not be unified, but we will save invoke.
+    alloc_checker{0}, test_wrapped_ref_call<function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type>>(1);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_c>>(1);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type_r>, function_ref<fn_type_c>>(1);
+#ifdef __cpp_noexcept_function_type
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_nx>>(1);
+#endif // defined(__cpp_noexcept_function_type)
+
+    // function_ref in function_ref. See LWG-4264
+    // Note that outer function_ref unwrapping is tricky due to its reference semantics.
+    // See also copy_and_assign() in P0792R14_function_ref, which provides the coverage from the semantics angle.
+    alloc_checker{0}, test_wrapped_ref_call<function_ref<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<function_ref<fn_type>, function_ref<fn_type_c>>(0);
+#ifdef __cpp_noexcept_function_type
+    alloc_checker{0}, test_wrapped_ref_call<function_ref<fn_type>, function_ref<fn_type_nx>>(0);
+#endif // defined(__cpp_noexcept_function_type)
+
+    // Other wrappers in function_ref.
+    // These cannot unwrap due to the reference semantics, see LWG-4264 discussion.
+    alloc_checker{0}, test_wrapped_copy_call<function_ref<fn_type>, move_only_function<fn_type>, small_callable>(1);
+    alloc_checker{1}, test_wrapped_copy_call<function_ref<fn_type>, move_only_function<fn_type>, large_callable>(1);
+    alloc_checker{0}, test_wrapped_copy_call<function_ref<fn_type>, function<fn_type>, small_callable>(1);
+    alloc_checker{1}, test_wrapped_copy_call<function_ref<fn_type>, function<fn_type>, large_callable>(1);
 }
