@@ -469,6 +469,12 @@ STATIC_ASSERT(__cpp_lib_freestanding_variant == 202311L);
 #error __cpp_lib_freestanding_variant is defined
 #endif
 
+#if _HAS_CXX26
+STATIC_ASSERT(__cpp_lib_function_ref == 202511L);
+#elif defined(__cpp_lib_function_ref)
+#error __cpp_lib_function_ref is defined
+#endif
+
 #if _HAS_CXX17
 STATIC_ASSERT(__cpp_lib_gcd_lcm == 201606L);
 #elif defined(__cpp_lib_gcd_lcm)

@@ -181,4 +181,20 @@ void test_move_only_function() {
     move_only_function<void(int) const>{validating_large_identity{}};
 }
 #endif // _HAS_CXX23
+
+#if _HAS_CXX26
+void test_function_ref() {
+    function_ref<void(validator) const>{simple_identity{}};
+    function_ref<void(int) const>{validating_identity{}};
+
+    function_ref<void(validator) const>{constant_arg<simple_identity{}>};
+    function_ref<void(int) const>{constant_arg<validating_identity{}>};
+
+    function_ref<void() const>{constant_arg<simple_identity{}>, validator{}};
+
+    int i;
+    function_ref<void() const>{constant_arg<validating_identity{}>, &i};
+    function_ref<void() const>{constant_arg<validating_identity{}>, i};
+}
+#endif // _HAS_CXX26
 #endif // ^^^ no workaround ^^^
