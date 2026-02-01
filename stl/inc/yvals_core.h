@@ -408,6 +408,7 @@
 // P3567R2 flat_meow Fixes
 
 // _HAS_CXX26 controls:
+// P0792R14 function_ref
 // P2548R6 copyable_function
 
 // Parallel Algorithms Notes
@@ -1781,6 +1782,7 @@ _EMIT_STL_ERROR(STL1004, "C++98 unexpected() is incompatible with C++23 unexpect
 // C++26
 #if _HAS_CXX26
 #define __cpp_lib_copyable_function 202306L
+#define __cpp_lib_function_ref 202511L
 #endif // _HAS_CXX26
 
 // macros with language mode sensitivity
@@ -1906,9 +1908,11 @@ _EMIT_STL_ERROR(STL1013, "The STL doesn't support /RTCc because it rejects confo
 // The earliest Windows supported by this implementation is Windows 10.
 
 #ifdef __cpp_noexcept_function_type
-#define _NOEXCEPT_FNPTR noexcept
+#define _NOEXCEPT_FNPTR           noexcept
+#define _NOEXCEPT_FNPTR_COND(...) noexcept(__VA_ARGS__)
 #else // ^^^ defined(__cpp_noexcept_function_type) / !defined(__cpp_noexcept_function_type) vvv
 #define _NOEXCEPT_FNPTR
+#define _NOEXCEPT_FNPTR_COND(...)
 #endif // ^^^ !defined(__cpp_noexcept_function_type) ^^^
 
 #ifdef __clang__
