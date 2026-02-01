@@ -407,6 +407,9 @@
 //     (partial implementation; see GH-4924)
 // P3567R2 flat_meow Fixes
 
+// _HAS_CXX26 controls:
+// P0792R14 function_ref
+
 // Parallel Algorithms Notes
 // C++ allows an implementation to implement parallel algorithms as calls to the serial algorithms.
 // This implementation parallelizes several common algorithm calls, but not all.
@@ -1775,6 +1778,11 @@ _EMIT_STL_ERROR(STL1004, "C++98 unexpected() is incompatible with C++23 unexpect
 #define __cpp_lib_unreachable                 202202L
 #endif // _HAS_CXX23
 
+// C++26
+#if _HAS_CXX26
+#define __cpp_lib_function_ref 202511L
+#endif // _HAS_CXX26
+
 // macros with language mode sensitivity
 #if _HAS_CXX20
 #define __cpp_lib_array_constexpr 201811L // P1032R1 Miscellaneous constexpr
@@ -1898,9 +1906,11 @@ _EMIT_STL_ERROR(STL1013, "The STL doesn't support /RTCc because it rejects confo
 // The earliest Windows supported by this implementation is Windows 10.
 
 #ifdef __cpp_noexcept_function_type
-#define _NOEXCEPT_FNPTR noexcept
+#define _NOEXCEPT_FNPTR           noexcept
+#define _NOEXCEPT_FNPTR_COND(...) noexcept(__VA_ARGS__)
 #else // ^^^ defined(__cpp_noexcept_function_type) / !defined(__cpp_noexcept_function_type) vvv
 #define _NOEXCEPT_FNPTR
+#define _NOEXCEPT_FNPTR_COND(...)
 #endif // ^^^ !defined(__cpp_noexcept_function_type) ^^^
 
 #ifdef __clang__
