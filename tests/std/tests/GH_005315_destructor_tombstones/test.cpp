@@ -126,6 +126,13 @@ void test_move_only_function() {
 }
 #endif // _HAS_CXX23
 
+#if _HAS_CXX26
+void test_function_ref() {
+    call_on_destroyed_object<function_ref<int(int, int)>>(
+        [](auto& fr) { return fr(1, 2); }, [](int a, int b) { return a + b; });
+}
+#endif // _HAS_CXX26
+
 int main(int argc, char* argv[]) {
     std_testing::death_test_executive exec;
 
@@ -159,6 +166,10 @@ int main(int argc, char* argv[]) {
 #if _HAS_CXX23
         test_move_only_function,
 #endif // _HAS_CXX23
+
+#if _HAS_CXX26
+        test_function_ref,
+#endif // _HAS_CXX26
     });
 
     return exec.run(argc, argv);
