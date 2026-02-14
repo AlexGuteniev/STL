@@ -1584,6 +1584,23 @@ _NODISCARD _Rx __stdcall _Function_inv_old(void* const _Self, _Types&&... _Args)
     return _Ptr->_Do_call(_STD forward<_Types>(_Args)...);
 }
 
+template <class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_inv_ref(void* const _Self, _Types&&... _Args) {
+    const auto _Thunk_ptr    = static_cast<_Function_data*>(_Self)->_Pointers[1];
+    const auto _Bound_entity = static_cast<_Function_data*>(_Self)->_Pointers[2];
+    if constexpr (_Noex) {
+#ifdef __cpp_noexcept_function_type
+        return reinterpret_cast<_Rx(__stdcall*)(void*, _Types&&...) noexcept>(_Thunk_ptr)(
+            _Bound_entity, _STD forward<_Types>(_Args)...);
+#else // ^^^ defined(__cpp_noexcept_function_type) / !defined(__cpp_noexcept_function_type) vvv
+        static_assert(false); // when noexcept isn't in the type system, this should never be selected
+#endif // ^^^ !defined(__cpp_noexcept_function_type)^^^
+    } else {
+        return reinterpret_cast<_Rx(__stdcall*)(void*, _Types&&...)>(_Thunk_ptr)(
+            _Bound_entity, _STD forward<_Types>(_Args)...);
+    }
+}
+
 template <class _Vt>
 void __stdcall _Function_move_small(_Function_data& _Self, _Function_data& _Src) noexcept {
     const auto _Src_fn_ptr = _Src._Fn_ptr<_Vt, _Function_storage_mode::_Small>();
@@ -1797,6 +1814,7 @@ public:
 #else // ^^^ 64-bit / 32-bit vvv
         _Old_fn_small_as_large = 4,
 #endif // ^^^ 32-bit ^^^
+        _Ref = 5,
     };
 
     _Function_data _Data;
@@ -1869,6 +1887,13 @@ public:
         } else {
             ::new (_Data._Buf_ptr<_Vt>()) _Vt(_STD forward<_CTypes>(_Args)...);
         }
+    }
+
+    template <class _Fn, bool _Copyable>
+    void _Construct_with_fn_ref(const _Fn& _Func) {
+        _Data._Impl        = _Create_impl_ptr<_Impl_kind::_Ref, _Copyable, void, _Fn::_Noexcept, void>();
+        _Data._Pointers[1] = reinterpret_cast<void*>(_Func._Thunk_ptr);
+        _Data._Pointers[2] = _Func._Bound_entity;
     }
 
     static void _Checked_destroy(_Function_data& _Data) noexcept {
@@ -1978,7 +2003,14 @@ public:
     template <_Impl_kind _Kind, bool _Copyable, class _Vt, bool _Noexcept, class _VtInvQuals>
     _NODISCARD static constexpr auto _Create_impl() noexcept {
         conditional_t<_Copyable, _Impl_copyable_t, _Impl_t> _Impl{};
-        if constexpr (_Kind != _Impl_kind::_Usual) {
+        if constexpr (_Kind == _Impl_kind::_Ref) {
+            _Impl._Invoke  = _Function_inv_ref<_Rx, _Noexcept, _Types...>;
+            _Impl._Move    = _Function_move_memcpy<3 * sizeof(void*)>;
+            _Impl._Destroy = nullptr;
+            if constexpr (_Copyable) {
+                _Impl._Copy = _Function_copy_memcpy<3 * sizeof(void*)>;
+            }
+        } else if constexpr (_Kind != _Impl_kind::_Usual) {
             _STL_INTERNAL_STATIC_ASSERT(!_Noexcept);
             _STL_INTERNAL_STATIC_ASSERT(is_void_v<_VtInvQuals>);
             using _Fn = remove_pointer_t<decltype(_STD declval<_Vt>()._Getimpl())>;
@@ -2356,28 +2388,37 @@ public:
         }
 #endif // ^^^ _HAS_CXX26 ^^^
 
-        if constexpr (is_same_v<_Vt, function<typename _Call::_Signature_without_cv_ref_noex>>) {
-            this->template _Construct_with_old_fn<_Vt, _Copyable>(_STD forward<_Fn>(_Callable));
-        } else {
-            if constexpr (is_member_pointer_v<_Vt> || is_pointer_v<_Vt> || _Is_move_only_or_copyable_function<_Vt>) {
-                if (_Callable == nullptr) {
-                    this->_Reset_to_null();
-                    return;
-                }
-            }
-
-            if constexpr (_Is_move_only_or_copyable_function_varying_cv_ref_noex<_Vt,
-                              typename _Call::_Signature_without_cv_ref_noex>()) {
-                if constexpr (is_lvalue_reference_v<_Fn>) {
-                    _Call::_Checked_copy(this->_Data, _Callable._Data);
-                } else {
-                    _Call::_Checked_move(this->_Data, _Callable._Data);
-                    _Callable._Reset_to_null();
-                }
+#if _HAS_CXX26
+        if constexpr (_Is_function_ref_varying_cv_noex<_Vt,
+                          typename _Call::_Signature_without_cv_ref_noex>()) {
+            this->template _Construct_with_fn_ref<_Vt, _Copyable>(_Callable);
+        } else
+#endif
+        {
+            if constexpr (is_same_v<_Vt, function<typename _Call::_Signature_without_cv_ref_noex>>) {
+                this->template _Construct_with_old_fn<_Vt, _Copyable>(_STD forward<_Fn>(_Callable));
             } else {
-                using _VtInvQuals = _Call::template _VtInvQuals<_Vt>;
-                this->template _Construct_with_fn<_Vt, _Call::_Noexcept, _VtInvQuals, _Copyable>(
-                    _STD forward<_Fn>(_Callable));
+                if constexpr (is_member_pointer_v<_Vt> || is_pointer_v<_Vt>
+                              || _Is_move_only_or_copyable_function<_Vt>) {
+                    if (_Callable == nullptr) {
+                        this->_Reset_to_null();
+                        return;
+                    }
+                }
+
+                if constexpr (_Is_move_only_or_copyable_function_varying_cv_ref_noex<_Vt,
+                                  typename _Call::_Signature_without_cv_ref_noex>()) {
+                    if constexpr (is_lvalue_reference_v<_Fn>) {
+                        _Call::_Checked_copy(this->_Data, _Callable._Data);
+                    } else {
+                        _Call::_Checked_move(this->_Data, _Callable._Data);
+                        _Callable._Reset_to_null();
+                    }
+                } else {
+                    using _VtInvQuals = _Call::template _VtInvQuals<_Vt>;
+                    this->template _Construct_with_fn<_Vt, _Call::_Noexcept, _VtInvQuals, _Copyable>(
+                        _STD forward<_Fn>(_Callable));
+                }
             }
         }
     }
@@ -2614,6 +2655,7 @@ _NODISCARD _Rx __stdcall _Function_ref_inv_const_and_ptr(void* const _Entity, _T
 template <class _Rx, bool _Noex, bool _Const, class... _Types>
 struct _Function_ref_base {
     static constexpr bool _Is_const  = _Const;
+    static constexpr bool _Noexcept  = _Noex;
     using _Signature_without_cv_noex = _Rx(_Types...);
 
     template <class... _Tx>
@@ -2725,6 +2767,9 @@ private:
 
     template <class _Callable, class _Rx, class... _Types>
     friend class _Func_impl_no_alloc;
+
+    template <class _Rx, class... _Types>
+    friend class _Function_base;
 
     template <class _Fn, class _Signature_without_cv_noex>
     friend constexpr bool _Is_function_ref_varying_cv_noex();
