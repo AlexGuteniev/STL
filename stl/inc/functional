@@ -856,6 +856,20 @@ constexpr bool _Is_move_only_or_copyable_function_varying_cv_ref_noex() {
 }
 #endif //_HAS_CXX23
 
+#if _HAS_CXX26
+template <class... _Signature>
+_EXPORT_STD class function_ref;
+
+template <class _Fn, class _Signature_without_cv_noex>
+constexpr bool _Is_function_ref_varying_cv_noex() {
+    if constexpr (_Is_specialization_v<_Fn, function_ref>) {
+        return is_same_v<_Signature_without_cv_noex, typename _Fn::_Signature_without_cv_noex>;
+    } else {
+        return false;
+    }
+}
+#endif // _HAS_CXX26
+
 template <class _Ty>
 constexpr bool _Testable_callable_v =
     disjunction_v<is_pointer<_Ty>, _Is_specialization<_Ty, function>, is_member_pointer<_Ty>>;
@@ -945,6 +959,11 @@ private:
     }
 
     _Rx _Do_call(_Types&&... _Args) override { // call wrapped function
+#if _HAS_CXX26
+        if constexpr (_Is_function_ref_varying_cv_noex<_Callable, _Rx(_Types...)>()) {
+            return _Mypair._Myval2._Thunk_ptr(_Mypair._Myval2._Bound_entity, _STD forward<_Types>(_Args)...);
+        } else
+#endif // _HAS_CXX26
 #if _HAS_CXX23
         if constexpr (_Is_move_only_or_copyable_function_varying_cv_ref_noex<_Callable, _Rx(_Types...)>()) {
             return _Mypair._Myval2.template _Get_invoke<_Callable::_Noexcept>()(
@@ -1035,6 +1054,11 @@ private:
     }
 
     _Rx _Do_call(_Types&&... _Args) override { // call wrapped function
+#if _HAS_CXX26
+        if constexpr (_Is_function_ref_varying_cv_noex<_Callable, _Rx(_Types...)>()) {
+            return _Callee._Thunk_ptr(_Callee._Bound_entity, _STD forward<_Types>(_Args)...);
+        } else
+#endif // _HAS_CXX26
 #if _HAS_CXX23
         if constexpr (_Is_move_only_or_copyable_function_varying_cv_ref_noex<_Callable, _Rx(_Types...)>()) {
             return _Callee.template _Get_invoke<_Callable::_Noexcept>()(&_Callee._Data, _STD forward<_Types>(_Args)...);
@@ -2541,7 +2565,326 @@ public:
         return _This._Is_null();
     }
 };
-#endif //  _HAS_CXX26
+
+template <class _Ptr, class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_ref_inv_ptr(void* const _Entity, _Types&&... _Args) noexcept(_Noex) {
+    if constexpr (is_void_v<_Rx>) {
+        (void) _STD invoke(reinterpret_cast<_Ptr>(_Entity), _STD forward<_Types>(_Args)...);
+    } else {
+        return _STD invoke(reinterpret_cast<_Ptr>(_Entity), _STD forward<_Types>(_Args)...);
+    }
+}
+
+template <class _Fn, class _FnInv, class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_ref_inv_qual(void* const _Entity, _Types&&... _Args) noexcept(_Noex) {
+    if constexpr (is_void_v<_Rx>) {
+        (void) _STD invoke(static_cast<_FnInv>(*reinterpret_cast<_Fn*>(_Entity)), _STD forward<_Types>(_Args)...);
+    } else {
+        return _STD invoke(static_cast<_FnInv>(*reinterpret_cast<_Fn*>(_Entity)), _STD forward<_Types>(_Args)...);
+    }
+}
+
+template <auto _Obj, class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_ref_inv_const(void* const, _Types&&... _Args) noexcept(_Noex) {
+    if constexpr (is_void_v<_Rx>) {
+        (void) _STD invoke(_Obj, _STD forward<_Types>(_Args)...);
+    } else {
+        return _STD invoke(_Obj, _STD forward<_Types>(_Args)...);
+    }
+}
+
+template <auto _Obj, class _Fn, class _FnInv, class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_ref_inv_const_and_inv_qual(void* const _Entity, _Types&&... _Args) noexcept(_Noex) {
+    if constexpr (is_void_v<_Rx>) {
+        (void) _STD invoke(_Obj, static_cast<_FnInv>(*reinterpret_cast<_Fn*>(_Entity)), _STD forward<_Types>(_Args)...);
+    } else {
+        return _STD invoke(_Obj, static_cast<_FnInv>(*reinterpret_cast<_Fn*>(_Entity)), _STD forward<_Types>(_Args)...);
+    }
+}
+
+template <auto _Obj, class _Ptr, class _Rx, bool _Noex, class... _Types>
+_NODISCARD _Rx __stdcall _Function_ref_inv_const_and_ptr(void* const _Entity, _Types&&... _Args) noexcept(_Noex) {
+    if constexpr (is_void_v<_Rx>) {
+        (void) _STD invoke(_Obj, reinterpret_cast<_Ptr>(_Entity), _STD forward<_Types>(_Args)...);
+    } else {
+        return _STD invoke(_Obj, reinterpret_cast<_Ptr>(_Entity), _STD forward<_Types>(_Args)...);
+    }
+}
+
+template <class _Rx, bool _Noex, bool _Const, class... _Types>
+struct _Function_ref_base {
+    static constexpr bool _Is_const  = _Const;
+    using _Signature_without_cv_noex = _Rx(_Types...);
+
+    template <class... _Tx>
+    static constexpr bool _Is_invocable_using =
+        _Noex ? is_nothrow_invocable_r_v<_Rx, _Tx..., _Types...> : is_invocable_r_v<_Rx, _Tx..., _Types...>;
+
+    template <class _Fn>
+    using _Cv = conditional_t<_Const, const _Fn, _Fn>;
+
+#if _MSVC_STL_DESTRUCTOR_TOMBSTONES
+    ~_Function_ref_base() {
+        const auto _Tombstone{reinterpret_cast<decltype(_Thunk_ptr)>(_MSVC_STL_UINTPTR_TOMBSTONE_VALUE)};
+        _Thunk_ptr = _Tombstone;
+    }
+#endif // _MSVC_STL_DESTRUCTOR_TOMBSTONES
+
+    template <class _Fn>
+    void _Init_ptr(_Fn* _Func) noexcept {
+        _Thunk_ptr    = _Function_ref_inv_ptr<_Fn*, _Rx, _Noex, _Types...>;
+        _Bound_entity = reinterpret_cast<void*>(_Func);
+    }
+
+    template <class _Fn>
+    constexpr void _Init_ref(_Fn&& _Func) noexcept {
+        if constexpr (_Is_function_ref_varying_cv_noex<decay_t<_Fn>, _Signature_without_cv_noex>()) {
+            // Per LWO-4264
+            _Thunk_ptr    = _Func._Thunk_ptr;
+            _Bound_entity = _Func._Bound_entity;
+        } else {
+            using _Tx     = remove_reference_t<_Fn>;
+            _Thunk_ptr    = _Function_ref_inv_qual<_Tx, _Cv<_Tx>&, _Rx, _Noex, _Types...>;
+            _Bound_entity = const_cast<_Tx*>(_STD addressof(_Func));
+        }
+    }
+
+    template <auto _Fx>
+    constexpr void _Init_const() noexcept {
+        _Thunk_ptr    = _Function_ref_inv_const<_Fx, _Rx, _Noex, _Types...>;
+        _Bound_entity = nullptr;
+    }
+
+    template <auto _Fx, class _Ux>
+    constexpr void _Init_const_and_ref(_Ux&& _Func) noexcept {
+        using _Tx     = remove_reference_t<_Ux>;
+        _Thunk_ptr    = _Function_ref_inv_const_and_inv_qual<_Fx, _Tx, _Cv<_Tx>&, _Rx, _Noex, _Types...>;
+        _Bound_entity = const_cast<remove_const_t<_Tx>*>(_STD addressof(_Func));
+    }
+
+    template <auto _Fx, class _Tx>
+    constexpr void _Init_const_and_ptr(_Cv<_Tx>* _Func) noexcept {
+        _Thunk_ptr    = _Function_ref_inv_const_and_ptr<_Fx, _Cv<_Tx>*, _Rx, _Noex, _Types...>;
+        _Bound_entity = const_cast<remove_const_t<_Tx>*>(_Func);
+    }
+
+    _Rx(__stdcall* _Thunk_ptr)(void*, _Types&&...) _NOEXCEPT_FNPTR_COND(_Noex);
+    void* _Bound_entity;
+};
+
+template <class... _Signature>
+struct _Function_ref_call {
+    static_assert(_Always_false<integral_constant<size_t, sizeof...(_Signature)>>,
+        "std::function_ref only accepts function types as template arguments, "
+        "with possibly const/noexcept qualifiers.");
+};
+
+template <class _Rx, class... _Types>
+struct _Function_ref_call<_Rx(_Types...)> : _Function_ref_base<_Rx, false, false, _Types...> {
+    _Rx operator()(_Types... _Args) const {
+        return this->_Thunk_ptr(this->_Bound_entity, _STD forward<_Types>(_Args)...);
+    }
+};
+
+template <class _Rx, class... _Types>
+struct _Function_ref_call<_Rx(_Types...) const> : _Function_ref_base<_Rx, false, true, _Types...> {
+    _Rx operator()(_Types... _Args) const {
+        return this->_Thunk_ptr(this->_Bound_entity, _STD forward<_Types>(_Args)...);
+    }
+};
+
+#ifdef __cpp_noexcept_function_type
+template <class _Rx, class... _Types>
+struct _Function_ref_call<_Rx(_Types...) noexcept> : _Function_ref_base<_Rx, true, false, _Types...> {
+    _Rx operator()(_Types... _Args) const noexcept {
+        return this->_Thunk_ptr(this->_Bound_entity, _STD forward<_Types>(_Args)...);
+    }
+};
+
+template <class _Rx, class... _Types>
+struct _Function_ref_call<_Rx(_Types...) const noexcept> : _Function_ref_base<_Rx, true, true, _Types...> {
+    _Rx operator()(_Types... _Args) const noexcept {
+        return this->_Thunk_ptr(this->_Bound_entity, _STD forward<_Types>(_Args)...);
+    }
+};
+#endif // __cpp_noexcept_function_type
+
+template <class... _Signature>
+_EXPORT_STD class function_ref : private _Function_ref_call<_Signature...> {};
+
+template <class _Signature>
+_EXPORT_STD class function_ref<_Signature> : private _Function_ref_call<_Signature> {
+private:
+    using _Base = _Function_ref_call<_Signature>;
+
+    template <class, bool, bool, class...>
+    friend struct _Function_ref_base;
+
+    template <class _Callable, class _Alloc, class _Rx, class... _Types>
+    friend class _Func_impl;
+
+    template <class _Callable, class _Rx, class... _Types>
+    friend class _Func_impl_no_alloc;
+
+    template <class _Fn, class _Signature_without_cv_noex>
+    friend constexpr bool _Is_function_ref_varying_cv_noex();
+
+public:
+    template <class _Fn>
+        requires (is_function_v<_Fn> && _Base::template _Is_invocable_using<_Fn>)
+    function_ref(_Fn* _Func) noexcept {
+        _STL_ASSERT(_Func, "Precondition: _Func is not a null pointer (N5032 [func.wrap.ref.ctor]/3)");
+        this->_Init_ptr(_Func);
+    }
+
+    template <class _Fn>
+        requires (!is_same_v<remove_cvref_t<_Fn>, function_ref> && !is_member_pointer_v<remove_reference_t<_Fn>>
+                  && _Base::template _Is_invocable_using<typename _Base::template _Cv<remove_reference_t<_Fn>>>)
+    constexpr function_ref(_Fn&& _Func) noexcept {
+        this->_Init_ref(_Func);
+    }
+
+    template <auto _Fx>
+        requires (_Base::template _Is_invocable_using<const decltype(_Fx)&>)
+    constexpr function_ref(constant_arg_t<_Fx>) noexcept {
+        if constexpr (is_pointer_v<decltype(_Fx)> || is_member_pointer_v<decltype(_Fx)>) {
+            // explicit nullptr check for /permissive-
+            static_assert(_Fx != nullptr, "Mandates (N5032 [func.wrap.ref.ctor]/10)");
+        }
+
+        this->template _Init_const<_Fx>();
+    }
+
+    template <auto _Fx, class _Ux>
+        requires (!is_rvalue_reference_v<_Ux &&>
+                  && _Base::template _Is_invocable_using<const decltype(_Fx)&,
+                      typename _Base::template _Cv<remove_reference_t<_Ux>>&>)
+    constexpr function_ref(constant_arg_t<_Fx>, _Ux&& _Obj) noexcept {
+        if constexpr (is_pointer_v<decltype(_Fx)> || is_member_pointer_v<decltype(_Fx)>) {
+            // explicit nullptr check for /permissive-
+            static_assert(_Fx != nullptr, "Mandates (N5032 [func.wrap.ref.ctor]/14)");
+        }
+
+        this->template _Init_const_and_ref<_Fx>(_Obj);
+    }
+
+    template <auto _Fx, class _Tx>
+        requires (_Base::_Is_const && _Base::template _Is_invocable_using<const decltype(_Fx)&, const _Tx*>)
+    constexpr function_ref(constant_arg_t<_Fx>, const _Tx* _Obj) noexcept {
+        if constexpr (is_pointer_v<decltype(_Fx)> || is_member_pointer_v<decltype(_Fx)>) {
+            // explicit nullptr check for /permissive-
+            static_assert(_Fx != nullptr, "Mandates (N5032 [func.wrap.ref.ctor]/18)");
+        }
+
+        if constexpr (is_member_pointer_v<decltype(_Fx)>) {
+            _STL_ASSERT(_Obj, "Precondition: _Obj is not a null pointer (N5032 [func.wrap.ref.ctor]/19)");
+        }
+
+        this->template _Init_const_and_ptr<_Fx, _Tx>(_Obj);
+    }
+
+    template <auto _Fx, class _Tx>
+        requires (!_Base::_Is_const && _Base::template _Is_invocable_using<const decltype(_Fx)&, _Tx*>)
+    constexpr function_ref(constant_arg_t<_Fx>, _Tx* _Obj) noexcept {
+        if constexpr (is_pointer_v<decltype(_Fx)> || is_member_pointer_v<decltype(_Fx)>) {
+            static_assert(_Fx, "Mandates (N5032 [func.wrap.ref.ctor]/18)");
+        }
+
+        if constexpr (is_member_pointer_v<decltype(_Fx)>) {
+            _STL_ASSERT(_Obj, "Precondition: _Obj is not a null pointer (N5032 [func.wrap.ref.ctor]/19)");
+        }
+
+        this->template _Init_const_and_ptr<_Fx, _Tx>(_Obj);
+    }
+
+    constexpr function_ref(const function_ref&) noexcept            = default;
+    constexpr function_ref& operator=(const function_ref&) noexcept = default;
+
+    template <class T>
+    function_ref& operator=(T) = delete;
+
+    using _Base::operator();
+};
+
+template <class _Fn>
+    requires is_function_v<_Fn>
+function_ref(_Fn*) -> function_ref<_Fn>;
+
+template <auto _Obj>
+    requires is_function_v<remove_pointer_t<decltype(_Obj)>>
+function_ref(constant_arg_t<_Obj>) -> function_ref<remove_pointer_t<decltype(_Obj)>>;
+
+template <class, class>
+struct _Function_ref_const_and_pointer_deduction_guide {
+    using type = void;
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...), _Tx> {
+    using type = _Rx(_Args...);
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) const, _Tx> {
+    using type = _Rx(_Args...);
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) &, _Tx> {
+    using type = _Rx(_Args...);
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) const&, _Tx> {
+    using type = _Rx(_Args...);
+};
+
+#ifdef __cpp_noexcept_function_type
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) noexcept, _Tx> {
+    using type = _Rx(_Args...) noexcept;
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) const noexcept, _Tx> {
+    using type = _Rx(_Args...) noexcept;
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) & noexcept, _Tx> {
+    using type = _Rx(_Args...) noexcept;
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (_Gx::*)(_Args...) const & noexcept, _Tx> {
+    using type = _Rx(_Args...) noexcept;
+};
+#endif // __cpp_noexcept_function_type
+
+template <class _Mx, class _Gx, class _Tx>
+struct _Function_ref_const_and_pointer_deduction_guide<_Mx _Gx::*, _Tx> {
+    using _Rx  = invoke_result_t<_Mx _Gx::*, _Tx>;
+    using type = _Rx() _NOEXCEPT_FNPTR;
+};
+
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (*)(_Gx, _Args...), _Tx> {
+    using type = _Rx(_Args...);
+};
+
+#ifdef __cpp_noexcept_function_type
+template <class _Rx, class _Gx, class _Tx, class... _Args>
+struct _Function_ref_const_and_pointer_deduction_guide<_Rx (*)(_Gx, _Args...) noexcept, _Tx> {
+    using type = _Rx(_Args...) noexcept;
+};
+#endif // __cpp_noexcept_function_type
+
+template <auto _Obj, class _Tx>
+    requires (!is_void_v<typename _Function_ref_const_and_pointer_deduction_guide<decltype(_Obj), _Tx>::type>)
+function_ref(constant_arg_t<_Obj>, _Tx&&)
+    -> function_ref<typename _Function_ref_const_and_pointer_deduction_guide<decltype(_Obj), _Tx>::type>;
+
+#endif // _HAS_CXX26
 
 template <int _Nx>
 struct _Ph { // placeholder
