@@ -317,11 +317,15 @@ int main() {
     // Currently only unwrapping function, but not move_only_function
     // The thunk will not be unified, but we will save invoke.
     alloc_checker{0}, test_wrapped_ref_call<function<fn_type>, function_ref<fn_type>>(0);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type>>(1);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_c>>(1);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type_r>, function_ref<fn_type_c>>(1);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type_r>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type_r>, function_ref<fn_type_c>>(0);
 #ifdef __cpp_noexcept_function_type
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_nx>>(1);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_nx>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type_nx>>(0);
 #endif // defined(__cpp_noexcept_function_type)
 
     // function_ref in function_ref. See LWG-4264
