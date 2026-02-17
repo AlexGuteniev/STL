@@ -505,7 +505,7 @@ bool fail_allocations = false;
 
 #pragma warning(push)
 #pragma warning(disable : 28251) // Inconsistent annotation for 'new': this instance has no annotations.
-void* operator new(size_t size) {
+void*  __stdcall operator new(size_t size) {
 #pragma warning(pop)
     if (fail_allocations) {
         throw bad_alloc{};
@@ -517,7 +517,7 @@ void* operator new(size_t size) {
     return result;
 }
 
-void operator delete(void* p) noexcept {
+void __stdcall operator delete (void* p) noexcept {
     free(p);
 }
 
@@ -551,7 +551,7 @@ void test_except() {
     }
 }
 
-int main() {
+int __cdecl main() {
     test_construct_impl<small_callable>(38);
     test_construct_impl<large_callable>(39);
     test_construct_impl<odd_cc_callable>(40);

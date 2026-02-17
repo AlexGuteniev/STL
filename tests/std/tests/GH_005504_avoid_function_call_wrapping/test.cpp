@@ -28,23 +28,23 @@ void* check_alloc(void* const result) {
     return result;
 }
 
-void* operator new(const size_t size) {
+void* __stdcall operator new(const size_t size) {
     ++alloc_count;
     return check_alloc(malloc(adjust_alloc_size(size)));
 }
 
-void operator delete(void* const mem) noexcept {
+void __stdcall operator delete(void* const mem) noexcept {
     ++dealloc_count;
     free(mem);
 }
 
 #ifdef __cpp_aligned_new
-void* operator new(const size_t size, const align_val_t al) {
+void* __stdcall operator new(const size_t size, const align_val_t al) {
     ++alloc_count;
     return check_alloc(_aligned_malloc(adjust_alloc_size(size), static_cast<size_t>(al)));
 }
 
-void operator delete(void* const mem, align_val_t) noexcept {
+void __stdcall operator delete(void* const mem, align_val_t) noexcept {
     ++dealloc_count;
     _aligned_free(mem);
 }
@@ -161,7 +161,7 @@ void test_wrapped_null(const bool outer_is_null, const bool outer_throws) {
     check_call_null(outer, outer_throws);
 }
 
-int main() {
+int __cdecl main() {
     // Plain calls
     alloc_checker{0}, test_plain_call<function<fn_type>, small_callable>(0);
     alloc_checker{1}, test_plain_call<function<fn_type>, large_callable>(0);
