@@ -1331,7 +1331,7 @@ class complex {
         "You can define _HAS_NONFLOATING_COMPLEX to 1 to enable such instantiation "
         "and define _SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING to suppress its deprecation warning.");
 
-    // For deduction, primary template is used, so keeping couple of constructors around
+    // For deduction, primary template is used, so keeping a couple of constructors around
 
     constexpr complex(const _Ty& = _Ty(), const _Ty& = _Ty()) = delete;
 
