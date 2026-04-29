@@ -33,8 +33,8 @@ void perm_arr_check(benchmark::State& state) {
     copy(v2.begin(), v2.end(), a2.get());
 
     for (auto _ : state) {
-        benchmark::DoNotOptimize(v1);
-        benchmark::DoNotOptimize(v2);
+        benchmark::DoNotOptimize(a1.get());
+        benchmark::DoNotOptimize(a2.get());
         bool r;
         if constexpr (Args == args::three) {
             r = is_permutation(a1.get(), a1.get() + size, a2.get());
