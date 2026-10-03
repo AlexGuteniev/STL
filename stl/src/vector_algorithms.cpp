@@ -2800,7 +2800,8 @@ namespace {
             using _Ty =
                 std::conditional_t<_Use_signed_type, typename _Traits::_Signed_t, typename _Traits::_Unsigned_t>;
 
-            _Min_max_element_t _Res = {_First, _First};
+            const void* _Res_min = _First;
+            const void* _Res_max = _First;
             _Ty _Cur_min_val;
             _Ty _Cur_max_val;
 
@@ -2983,7 +2984,7 @@ namespace {
                                 // Extract its vertical index
                                 const auto _V_pos = _Traits::_Get_v_pos(_Idx_min);
                                 // Finally, compute the pointer
-                                _Res._Min = _Base + static_cast<size_t>(_V_pos) * _Traits::_Vec_size + _H_pos;
+                                _Res_min = _Base + static_cast<size_t>(_V_pos) * _Traits::_Vec_size + _H_pos;
                             }
                         }
 
@@ -3037,7 +3038,7 @@ namespace {
                                 }
 
                                 // Finally, compute the pointer
-                                _Res._Max = _Base + _V_pos * _Traits::_Vec_size + _H_pos;
+                                _Res_max = _Base + _V_pos * _Traits::_Vec_size + _H_pos;
                             }
                         }
                         // Horizontal part done, results are saved, now need to see if there is another portion.
@@ -3085,15 +3086,14 @@ namespace {
                 if constexpr (_Is_signed || _Traits::_Has_unsigned_cmp) {
                     return _Val;
                 } else {
-                    using _UTy = _Traits::_Unsigned_t;
+                    using _UTy                 = _Traits::_Unsigned_t;
                     constexpr _UTy _Correction = _UTy{1} << (sizeof(_UTy) * 8 - 1);
                     return static_cast<_UTy>(_Val + _Correction);
                 }
             };
 
             if constexpr (_Mode == _Mode_min) {
-                const void* _Res_min = _Res._Min;
-                auto _Cur            = _Apply_correction(_Cur_min_val);
+                auto _Cur = _Apply_correction(_Cur_min_val);
 
                 for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
                     if (*_Ptr < _Cur) {
@@ -3104,8 +3104,7 @@ namespace {
 
                 return _Res_min;
             } else if constexpr (_Mode == _Mode_max) {
-                const void* _Res_max = _Res._Max;
-                auto _Cur            = _Apply_correction(_Cur_max_val);
+                auto _Cur = _Apply_correction(_Cur_max_val);
 
                 for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
                     if (_Cur < *_Ptr) {
@@ -3121,19 +3120,19 @@ namespace {
 
                 for (auto _Ptr = static_cast<const decltype(_Cur_min)*>(_First); _Ptr != _Last; ++_Ptr) {
                     if (*_Ptr < _Cur_min) {
-                        _Res._Min = _Ptr;
-                        _Cur_min  = *_Ptr;
+                        _Res_min = _Ptr;
+                        _Cur_min = *_Ptr;
                     }
                     // Not else!
                     // * Needed for correctness if start with maximum, as we don't handle specially the first element.
                     // * Promote branchless code generation.
                     if (_Cur_max <= *_Ptr) {
-                        _Res._Max = _Ptr;
-                        _Cur_max  = *_Ptr;
+                        _Res_max = _Ptr;
+                        _Cur_max = *_Ptr;
                     }
                 }
 
-                return _Res;
+                return _Min_max_element_t{_Res_min, _Res_max};
             }
         }
 
