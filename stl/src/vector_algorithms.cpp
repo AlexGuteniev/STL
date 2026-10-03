@@ -2776,50 +2776,6 @@ namespace {
 #endif // ^^^ !defined(_M_ARM64) && !defined(_M_ARM64EC) ^^^
         };
 
-        template <class _Ty>
-        const void* _Min_tail(const void* const _First, const void* const _Last, const void* _Res, _Ty _Cur) noexcept {
-            for (auto _Ptr = static_cast<const _Ty*>(_First); _Ptr != _Last; ++_Ptr) {
-                if (*_Ptr < _Cur) {
-                    _Res = _Ptr;
-                    _Cur = *_Ptr;
-                }
-            }
-
-            return _Res;
-        }
-
-        template <class _Ty>
-        const void* _Max_tail(const void* const _First, const void* const _Last, const void* _Res, _Ty _Cur) noexcept {
-            for (auto _Ptr = static_cast<const _Ty*>(_First); _Ptr != _Last; ++_Ptr) {
-                if (_Cur < *_Ptr) {
-                    _Res = _Ptr;
-                    _Cur = *_Ptr;
-                }
-            }
-
-            return _Res;
-        }
-
-        template <class _Ty>
-        _Min_max_element_t _Both_tail(const void* const _First, const void* const _Last, _Min_max_element_t& _Res,
-            _Ty _Cur_min, _Ty _Cur_max) noexcept {
-            for (auto _Ptr = static_cast<const _Ty*>(_First); _Ptr != _Last; ++_Ptr) {
-                if (*_Ptr < _Cur_min) {
-                    _Res._Min = _Ptr;
-                    _Cur_min  = *_Ptr;
-                }
-                // Not else!
-                // * Needed for correctness if start with maximum, as we don't handle specially the first element.
-                // * Promote branchless code generation.
-                if (_Cur_max <= *_Ptr) {
-                    _Res._Max = _Ptr;
-                    _Cur_max  = *_Ptr;
-                }
-            }
-
-            return _Res;
-        }
-
         template <class _Traits, bool _Use_signed_type>
         auto _H_min_wrap(const auto _Vals) noexcept {
             if constexpr (_Use_signed_type) {
@@ -3136,12 +3092,48 @@ namespace {
             };
 
             if constexpr (_Mode == _Mode_min) {
-                return _Min_tail(_First, _Last, _Res._Min, _Apply_correction(_Cur_min_val));
+                const void* _Res_min = _Res._Min;
+                auto _Cur            = _Apply_correction(_Cur_min_val);
+
+                for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
+                    if (*_Ptr < _Cur) {
+                        _Res_min = _Ptr;
+                        _Cur     = *_Ptr;
+                    }
+                }
+
+                return _Res_min;
             } else if constexpr (_Mode == _Mode_max) {
-                return _Max_tail(_First, _Last, _Res._Max, _Apply_correction(_Cur_max_val));
+                const void* _Res_max = _Res._Max;
+                auto _Cur            = _Apply_correction(_Cur_max_val);
+
+                for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
+                    if (_Cur < *_Ptr) {
+                        _Res_max = _Ptr;
+                        _Cur     = *_Ptr;
+                    }
+                }
+
+                return _Res_max;
             } else {
-                return _Both_tail(
-                    _First, _Last, _Res, _Apply_correction(_Cur_min_val), _Apply_correction(_Cur_max_val));
+                auto _Cur_min = _Apply_correction(_Cur_min_val);
+                auto _Cur_max = _Apply_correction(_Cur_max_val);
+
+                for (auto _Ptr = static_cast<const decltype(_Cur_min)*>(_First); _Ptr != _Last; ++_Ptr) {
+                    if (*_Ptr < _Cur_min) {
+                        _Res._Min = _Ptr;
+                        _Cur_min  = *_Ptr;
+                    }
+                    // Not else!
+                    // * Needed for correctness if start with maximum, as we don't handle specially the first element.
+                    // * Promote branchless code generation.
+                    if (_Cur_max <= *_Ptr) {
+                        _Res._Max = _Ptr;
+                        _Cur_max  = *_Ptr;
+                    }
+                }
+
+                return _Res;
             }
         }
 
