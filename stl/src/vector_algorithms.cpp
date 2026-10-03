@@ -3125,27 +3125,23 @@ namespace {
                 _Traits::_Exit_vectorized(); // TRANSITION, DevCom-10331414
             }
 
-            if constexpr (_Is_signed) {
-                if constexpr (_Mode == _Mode_min) {
-                    return _Min_tail(_First, _Last, _Res._Min, _Cur_min_val);
-                } else if constexpr (_Mode == _Mode_max) {
-                    return _Max_tail(_First, _Last, _Res._Max, _Cur_max_val);
+            const auto _Apply_correction = [](const auto _Val) noexcept {
+                if constexpr (_Is_signed || _Traits::_Has_unsigned_cmp) {
+                    return _Val;
                 } else {
-                    return _Both_tail(_First, _Last, _Res, _Cur_min_val, _Cur_max_val);
+                    using _UTy = _Traits::_Unsigned_t;
+                    constexpr _UTy _Correction = _UTy{1} << (sizeof(_UTy) * 8 - 1);
+                    return static_cast<_UTy>(_Val + _Correction);
                 }
+            };
+
+            if constexpr (_Mode == _Mode_min) {
+                return _Min_tail(_First, _Last, _Res._Min, _Apply_correction(_Cur_min_val));
+            } else if constexpr (_Mode == _Mode_max) {
+                return _Max_tail(_First, _Last, _Res._Max, _Apply_correction(_Cur_max_val));
             } else {
-                using _UTy = _Traits::_Unsigned_t;
-
-                constexpr _UTy _Correction = _Traits::_Has_unsigned_cmp ? 0 : _UTy{1} << (sizeof(_UTy) * 8 - 1);
-
-                if constexpr (_Mode == _Mode_min) {
-                    return _Min_tail(_First, _Last, _Res._Min, static_cast<_UTy>(_Cur_min_val + _Correction));
-                } else if constexpr (_Mode == _Mode_max) {
-                    return _Max_tail(_First, _Last, _Res._Max, static_cast<_UTy>(_Cur_max_val + _Correction));
-                } else {
-                    return _Both_tail(_First, _Last, _Res, static_cast<_UTy>(_Cur_min_val + _Correction),
-                        static_cast<_UTy>(_Cur_max_val + _Correction));
-                }
+                return _Both_tail(
+                    _First, _Last, _Res, _Apply_correction(_Cur_min_val), _Apply_correction(_Cur_max_val));
             }
         }
 
