@@ -3092,46 +3092,38 @@ namespace {
                 }
             };
 
-            if constexpr (_Mode == _Mode_min) {
-                auto _Cur = _Apply_correction(_Cur_min_val);
+            auto _Cur_min = _Apply_correction(_Cur_min_val);
+            auto _Cur_max = _Apply_correction(_Cur_max_val);
 
-                for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
-                    if (*_Ptr < _Cur) {
-                        _Res_min = _Ptr;
-                        _Cur     = *_Ptr;
-                    }
-                }
-
-                return _Res_min;
-            } else if constexpr (_Mode == _Mode_max) {
-                auto _Cur = _Apply_correction(_Cur_max_val);
-
-                for (auto _Ptr = static_cast<const decltype(_Cur)*>(_First); _Ptr != _Last; ++_Ptr) {
-                    if (_Cur < *_Ptr) {
-                        _Res_max = _Ptr;
-                        _Cur     = *_Ptr;
-                    }
-                }
-
-                return _Res_max;
-            } else {
-                auto _Cur_min = _Apply_correction(_Cur_min_val);
-                auto _Cur_max = _Apply_correction(_Cur_max_val);
-
-                for (auto _Ptr = static_cast<const decltype(_Cur_min)*>(_First); _Ptr != _Last; ++_Ptr) {
+            for (auto _Ptr = static_cast<const decltype(_Cur_min)*>(_First); _Ptr != _Last; ++_Ptr) {
+                if constexpr ((_Mode & _Mode_min) != 0) {
                     if (*_Ptr < _Cur_min) {
                         _Res_min = _Ptr;
                         _Cur_min = *_Ptr;
                     }
-                    // Not else!
-                    // * Needed for correctness if start with maximum, as we don't handle specially the first element.
+                }
+
+                if constexpr (_Mode == _Mode_max) {
+                    if (_Cur_max < *_Ptr) {
+                        _Res_max = _Ptr;
+                        _Cur_max = *_Ptr;
+                    }
+                } else if constexpr (_Mode == _Mode_both) {
+                    // Not using else after the _Cur_min part for _Mode_both!
+                    // * Needed for correctness if start with max, as we don't handle specially the first element.
                     // * Promote branchless code generation.
                     if (_Cur_max <= *_Ptr) {
                         _Res_max = _Ptr;
                         _Cur_max = *_Ptr;
                     }
                 }
+            }
 
+            if constexpr (_Mode == _Mode_min) {
+                return _Res_min;
+            } else if constexpr (_Mode == _Mode_max) {
+                return _Res_max;
+            } else {
                 return _Min_max_element_t{_Res_min, _Res_max};
             }
         }
