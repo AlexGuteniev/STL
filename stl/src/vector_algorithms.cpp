@@ -2797,20 +2797,21 @@ namespace {
         template <_Min_max_mode _Mode, class _Traits, bool _Is_signed>
         auto _Minmax_element_impl(const void* _First, const void* const _Last) noexcept {
             constexpr bool _Use_signed_type = _Is_signed || !_Traits::_Has_unsigned_cmp;
-            using _Ty =
+            using _Ty = std::conditional_t<_Is_signed, typename _Traits::_Signed_t, typename _Traits::_Unsigned_t>;
+            using _TyCor =
                 std::conditional_t<_Use_signed_type, typename _Traits::_Signed_t, typename _Traits::_Unsigned_t>;
 
             const void* _Res_min = _First;
             const void* _Res_max = _First;
-            _Ty _Cur_min_val;
-            _Ty _Cur_max_val;
+            _TyCor _Cur_min_val;
+            _TyCor _Cur_max_val;
 
-            if constexpr (std::is_floating_point_v<_Ty>) {
-                _Cur_min_val = std::numeric_limits<_Ty>::infinity();
-                _Cur_max_val = -std::numeric_limits<_Ty>::infinity();
+            if constexpr (std::is_floating_point_v<_TyCor>) {
+                _Cur_min_val = std::numeric_limits<_TyCor>::infinity();
+                _Cur_max_val = -std::numeric_limits<_TyCor>::infinity();
             } else {
-                _Cur_min_val = std::numeric_limits<_Ty>::max();
-                _Cur_max_val = std::numeric_limits<_Ty>::min();
+                _Cur_min_val = std::numeric_limits<_TyCor>::max();
+                _Cur_max_val = std::numeric_limits<_TyCor>::min();
             }
 
             if constexpr (_Traits::_Vectorized) {
@@ -2867,7 +2868,7 @@ namespace {
                     }
                 };
                 const auto _Less_wrap = [](const auto _Lhs, const auto _Rhs) noexcept {
-                    return static_cast<_Ty>(_Lhs) < static_cast<_Ty>(_Rhs);
+                    return static_cast<_TyCor>(_Lhs) < static_cast<_TyCor>(_Rhs);
                 };
 
                 const auto _Update_min_max = [&](const auto _Cur_vals, [[maybe_unused]] const auto _Blend_idx_0,
@@ -3082,20 +3083,19 @@ namespace {
                 _Traits::_Exit_vectorized(); // TRANSITION, DevCom-10331414
             }
 
-            const auto _Apply_correction = [](const auto _Val) noexcept {
+            const auto _Apply_correction = [](const _TyCor _Val) noexcept {
                 if constexpr (_Is_signed || _Traits::_Has_unsigned_cmp) {
                     return _Val;
                 } else {
-                    using _UTy                 = _Traits::_Unsigned_t;
-                    constexpr _UTy _Correction = _UTy{1} << (sizeof(_UTy) * 8 - 1);
-                    return static_cast<_UTy>(_Val + _Correction);
+                    constexpr _Ty _Correction = _Ty{1} << (sizeof(_Ty) * 8 - 1);
+                    return static_cast<_Ty>(_Val + _Correction);
                 }
             };
 
-            auto _Cur_min = _Apply_correction(_Cur_min_val);
-            auto _Cur_max = _Apply_correction(_Cur_max_val);
+            _Ty _Cur_min = _Apply_correction(_Cur_min_val);
+            _Ty _Cur_max = _Apply_correction(_Cur_max_val);
 
-            for (auto _Ptr = static_cast<const decltype(_Cur_min)*>(_First); _Ptr != _Last; ++_Ptr) {
+            for (auto _Ptr = static_cast<const _Ty*>(_First); _Ptr != _Last; ++_Ptr) {
                 if constexpr ((_Mode & _Mode_min) != 0) {
                     if (*_Ptr < _Cur_min) {
                         _Res_min = _Ptr;
