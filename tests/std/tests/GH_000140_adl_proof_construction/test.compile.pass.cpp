@@ -189,5 +189,19 @@ void test_coypable_function() {
     copyable_function<void(int) const>{validating_identity{}};
     copyable_function<void(int) const>{validating_large_identity{}};
 }
+
+void test_function_ref() {
+    function_ref<void(validator) const>{simple_identity{}};
+    function_ref<void(int) const>{validating_identity{}};
+
+    function_ref<void(validator) const>{constant_arg<simple_identity{}>};
+    function_ref<void(int) const>{constant_arg<validating_identity{}>};
+
+    function_ref<void() const>{constant_arg<simple_identity{}>, validator{}};
+
+    int i;
+    function_ref<void() const>{constant_arg<validating_identity{}>, &i};
+    function_ref<void() const>{constant_arg<validating_identity{}>, i};
+}
 #endif // _HAS_CXX26
 #endif // ^^^ no workaround ^^^
