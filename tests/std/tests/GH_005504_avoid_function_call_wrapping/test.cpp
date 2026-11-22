@@ -316,14 +316,18 @@ int main() {
     alloc_checker{0}, test_wrapped_null<copyable_function<fn_type>, function<fn_type>>(false, true);
     alloc_checker{1}, test_wrapped_null<function<fn_type>, copyable_function<fn_type>>(false, false);
 
-    // function_ref in other wrappres. The optimization is optional, see P3961R1 -- we are not implementing it yet.
-    // When/if we implement this, the thunk will not be unified, but we will save invoke.
-    alloc_checker{0}, test_wrapped_ref_call<function<fn_type>, function_ref<fn_type>>(1);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type>>(1);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_c>>(1);
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type_r>, function_ref<fn_type_c>>(1);
+    // function_ref in other wrappres. The optimization is optional, see P3961R1.
+    // In our implementation, the thunk is not unified, but we still save an invoke.
+    alloc_checker{0}, test_wrapped_ref_call<function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type_r>, function_ref<fn_type_c>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type_r>, function_ref<fn_type_c>>(0);
 #ifdef __cpp_noexcept_function_type
-    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_nx>>(1);
+    alloc_checker{0}, test_wrapped_ref_call<move_only_function<fn_type>, function_ref<fn_type_nx>>(0);
+    alloc_checker{0}, test_wrapped_ref_call<copyable_function<fn_type>, function_ref<fn_type_nx>>(0);
 #endif // defined(__cpp_noexcept_function_type)
 
     // function_ref in function_ref. Unwrapping is mandatory here!
@@ -335,7 +339,9 @@ int main() {
     alloc_checker{0}, test_wrapped_ref_call<function_ref<fn_type>, function_ref<fn_type_nx>>(0);
 #endif // defined(__cpp_noexcept_function_type)
 
-    // Other wrappers in function_ref. These cannot unwrap due to the reference semantics, see LWG-4264 discussion.
+    // Other wrappers in function_ref.
+    // These cannot unwrap with thunk unification due to the reference semantics, see LWG-4264 discussion.
+    // Still there's an opportunity to save an invoke in the future, currently not doing this.
     alloc_checker{0}, test_wrapped_copy_call<function_ref<fn_type>, move_only_function<fn_type>, small_callable>(1);
     alloc_checker{1}, test_wrapped_copy_call<function_ref<fn_type>, move_only_function<fn_type>, large_callable>(1);
     alloc_checker{0}, test_wrapped_copy_call<function_ref<fn_type>, function<fn_type>, small_callable>(1);
